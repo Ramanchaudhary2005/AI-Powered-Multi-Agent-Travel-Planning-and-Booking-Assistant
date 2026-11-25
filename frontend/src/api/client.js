@@ -159,7 +159,7 @@ export function getSessionSteps(sessionId) {
 export async function streamAgentMessage(
   sessionId,
   content,
-  { onStepUpdate, onUiCard, onAssistantMessage, onDone, onError, signal } = {}
+  { onStepUpdate, onUiCard, onAssistantMessage, onBudgetUpdated, onDone, onError, signal } = {}
 ) {
   const token = localStorage.getItem('flightagent_jwt');
   const res = await fetch(`${API_BASE}/api/agent/message`, {
@@ -218,6 +218,7 @@ export async function streamAgentMessage(
     if (eventName === 'step_update') onStepUpdate?.(parsed);
     else if (eventName === 'ui_card') onUiCard?.(parsed);
     else if (eventName === 'assistant_message') onAssistantMessage?.(parsed);
+    else if (eventName === 'budget_updated') onBudgetUpdated?.(parsed);
     else if (eventName === 'done') onDone?.(parsed);
   };
 

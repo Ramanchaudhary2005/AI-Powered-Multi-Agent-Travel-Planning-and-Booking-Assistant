@@ -8,6 +8,7 @@ Each tool wraps the corresponding ``backend/services/`` function.
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any
 
 from google.genai import types
@@ -148,6 +149,24 @@ _create_booking = types.FunctionDeclaration(
     ),
 )
 
+_set_budget_cap = types.FunctionDeclaration(
+    name="set_budget_cap",
+    description=(
+        "Set or clear this active session's maximum total spend in Indian Rupees. "
+        "Call immediately when the user states or changes their budget; use 0 to clear it."
+    ),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "amount_inr": types.Schema(
+                type=types.Type.NUMBER,
+                description="Budget cap in INR; 0 clears the cap.",
+            ),
+        },
+        required=["amount_inr"],
+    ),
+)
+
 _create_payment_order = types.FunctionDeclaration(
     name="create_payment_order",
     description=(
@@ -170,6 +189,7 @@ GEMINI_TOOL = types.Tool(
         _find_alternatives,
         _create_booking,
         _create_payment_order,
+        _set_budget_cap,
     ]
 )
 
@@ -204,6 +224,27 @@ def execute(
     ``context`` carries ``last_search_results`` across calls within a turn.
     """
     args = _convert(raw_args) or {}
+
+    if name == "set_budget_cap":
+        if session_id is None:
+            return {"error": "An active session is required to set a budget."}
+        raw_amount = args.get("amount_inr")
+        amount = None if raw_amount is None or float(raw_amount) == 0 else float(raw_amount)
+        if amount is not None and amount < 0:
+            return {"error": "Budget cap must be zero or a positive INR amount."}
+        conn = sqlite_mod.get_connection()
+        try:
+            cur = conn.execute(
+                "UPDATE agent_sessions SET budget = ? WHERE session_id = ? AND status = 'ACTIVE'",
+                (amount, session_id),
+            )
+            if cur.rowcount == 0:
+                return {"error": "Active session not found."}
+            conn.commit()
+        finally:
+            conn.close()
+        context["budget_cap"] = amount
+        return {"budget_cap": amount}
 
     if name == "search_flights":
         results = flight_service.search_flights(
@@ -264,6 +305,38 @@ def execute(
         # ── Budget guard ─────────────────────────────────────────────
         flight_id = int(args["flight_id"])
         passengers = args["passengers"]
+        user_context = context.get("user_context") or {}
+        if user_context:
+            args["email"] = args.get("email") or user_context.get("email")
+            args["name"] = args.get("name") or user_context.get("name") or user_context.get("first_middle_name")
+            args["phone"] = args.get("phone") or user_context.get("mobile_number")
+            companions = user_context.get("co_travellers", [])
+            for passenger in passengers:
+                requested = str(passenger.get("name") or "").strip().lower()
+                relationship_aliases = {
+                    "spouse": ("wife", "husband", "partner"),
+                    "child": ("son", "daughter", "kid"),
+                    "parent": ("mother", "father", "mom", "dad"),
+                    "sibling": ("brother", "sister"),
+                }
+                match = next((companion for companion in companions if (
+                    (companion.get("first_middle_name") or "").lower() in requested
+                    or " ".join(filter(None, [companion.get("first_middle_name"), companion.get("last_name")])).lower() in requested
+                    or (bool(companion.get("relationship")) and companion["relationship"].lower() in requested)
+                    or any(alias in requested for alias in relationship_aliases.get((companion.get("relationship") or "").lower(), ()))
+                )), None)
+                if match:
+                    passenger["name"] = " ".join(filter(None, [match.get("first_middle_name"), match.get("last_name")]))
+                    if match.get("gender"):
+                        gender = match["gender"]
+                        passenger["gender"] = {"Male": "M", "Female": "F"}.get(gender, gender)
+                    if match.get("dob"):
+                        try:
+                            born = date.fromisoformat(match["dob"])
+                            today = date.today()
+                            passenger["age"] = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+                        except ValueError:
+                            pass
         dcon = duck.get_connection()
         try:
             row = dcon.execute(

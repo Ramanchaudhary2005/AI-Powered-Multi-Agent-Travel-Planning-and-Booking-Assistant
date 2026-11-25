@@ -103,13 +103,20 @@ def _get_client() -> genai.Client:
 
 # ── System prompt builder ────────────────────────────────────────────────
 
-def _build_system_prompt(session: dict) -> str:
+def _build_system_prompt(session: dict, user_context: dict | None = None) -> str:
     today = date.today()
     tomorrow = today + timedelta(days=1)
     max_date = today + timedelta(days=49)
     budget = session.get("budget")
     budget_str = f"₹{budget:,}" if budget else "No budget set"
 
+    profile_block = ""
+    if user_context:
+        profile_block = (
+            "[Logged-in User Context]\n"
+            + json.dumps(user_context, ensure_ascii=False, default=str)
+            + "\nUse this private profile context only to personalize assistance and fill details the user has asked you to use. Never reveal credentials or ask the user to repeat saved co-traveller details.\n\n"
+        )
     return (
         "You are SkyAgent, a friendly and efficient flight-booking assistant "
         "for Indian domestic flights.\n\n"
@@ -118,8 +125,9 @@ def _build_system_prompt(session: dict) -> str:
         f"(1–49 days from today)\n"
         f"SUPPORTED CITIES: Delhi, Mumbai, Bangalore, Kolkata, Hyderabad, Chennai\n"
         f"SESSION BUDGET: {budget_str}\n\n"
+        f"{profile_block}"
         "YOUR WORKFLOW:\n"
-        "1. Understand the user's travel needs (cities, dates, class, number of passengers).\n"
+        "1. Understand the user's travel needs (cities, dates, class, number of passengers). If they state or change a budget in any form, immediately call set_budget_cap before searching, ranking, or booking.\n"
         "2. Use search_flights to find available options.\n"
         "3. Use rank_flights to compare and recommend the best options.\n"
         "4. If no flights match, use find_alternatives to broaden the search.\n"
@@ -136,6 +144,7 @@ def _build_system_prompt(session: dict) -> str:
         "Razorpay checkout.\n"
         "- ALL prices are in Indian Rupees (₹ / INR).\n"
         "- If the budget is set, warn the user if a booking would exceed it.\n"
+        "- For authenticated users, greet them naturally by first name when appropriate. Resolve 'from my city' / 'mere home city se' from the saved city. Match named or relationship-referenced saved co-travellers and use their saved details without asking the user to repeat them. Do not infer a home city for guests.\n"
         "- Keep responses concise and helpful. Use bullet points for flight "
         "comparisons.\n"
         "- Confirm flight details with the user BEFORE creating a booking.\n"
@@ -255,7 +264,8 @@ def _summarise(tool_name: str, result: dict) -> str:
 
 # ── Main streaming generator ─────────────────────────────────────────────
 
-def stream_response(session_id: int, user_message: str) -> Generator[str, None, None]:
+def stream_response(session_id: int, user_message: str,
+                    user_context: dict | None = None) -> Generator[str, None, None]:
     """
     Synchronous generator that yields SSE frames.
 
@@ -265,7 +275,7 @@ def stream_response(session_id: int, user_message: str) -> Generator[str, None, 
     _save_message(session_id, "user", user_message)
 
     try:
-        yield from _stream_inner(session_id, user_message)
+        yield from _stream_inner(session_id, user_message, user_context)
     except Exception as exc:
         error_text = f"⚠️ Agent error: {exc}"
         _save_message(session_id, "assistant", error_text)
@@ -277,7 +287,8 @@ def stream_response(session_id: int, user_message: str) -> Generator[str, None, 
         yield _sse("done", {})
 
 
-def _stream_inner(session_id: int, user_message: str) -> Generator[str, None, None]:
+def _stream_inner(session_id: int, user_message: str,
+                  user_context: dict | None = None) -> Generator[str, None, None]:
     # ── Load session ─────────────────────────────────────────────────
     conn = sqlite_mod.get_connection()
     try:
@@ -296,7 +307,7 @@ def _stream_inner(session_id: int, user_message: str) -> Generator[str, None, No
 
     # ── Build Gemini config ──────────────────────────────────────────
     client = _get_client()
-    system_prompt = _build_system_prompt(session)
+    system_prompt = _build_system_prompt(session, user_context)
     gen_config = types.GenerateContentConfig(
         tools=[agent_tools.GEMINI_TOOL],
         system_instruction=system_prompt,
@@ -311,7 +322,7 @@ def _stream_inner(session_id: int, user_message: str) -> Generator[str, None, No
     turn_id = _next_turn_id(session_id)
     step_no = 0
     last_ui_payload: dict | None = None
-    context: dict[str, Any] = {"last_search_results": []}
+    context: dict[str, Any] = {"last_search_results": [], "user_context": user_context}
 
     # ── Tool loop (max 6 iterations) ─────────────────────────────────
     for _iteration in range(MAX_ITERATIONS):
@@ -325,6 +336,9 @@ def _stream_inner(session_id: int, user_message: str) -> Generator[str, None, No
         parts = candidate.content.parts
 
         fn_calls = [p for p in parts if p.function_call]
+        # Apply a newly stated cap before any search or booking calls returned
+        # in the same Gemini response.
+        fn_calls.sort(key=lambda part: part.function_call.name != "set_budget_cap")
         text_parts = [p for p in parts if p.text]
 
         if fn_calls:
@@ -361,6 +375,8 @@ def _stream_inner(session_id: int, user_message: str) -> Generator[str, None, No
                         "step_no": step_no, "tool_name": fc.name,
                         "status": "DONE", "summary": summary,
                     })
+                    if fc.name == "set_budget_cap" and "error" not in result:
+                        yield _sse("budget_updated", {"budget_cap": result.get("budget_cap")})
 
                     # ── UI card? ─────────────────────────────────────
                     if fc.name == "rank_flights" and "error" not in result:

@@ -4,12 +4,13 @@ Agent router — session management + SSE message streaming.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.agent import orchestrator
 from backend.db import sqlite as sqlite_mod
+from backend.routers.auth import get_optional_user
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -23,13 +24,13 @@ class SessionCreate(BaseModel):
 class SessionOut(BaseModel):
     session_id: int
     user_id: int | None = None
-    budget: int | None = None
+    budget: float | None = None
     status: str
     created_at: str
 
 
 class BudgetUpdate(BaseModel):
-    budget: int
+    budget: int | None
 
 
 class AgentMessageIn(BaseModel):
@@ -91,7 +92,7 @@ def update_budget(session_id: int, req: BudgetUpdate):
     try:
         cur = conn.execute(
             "UPDATE agent_sessions SET budget = ? WHERE session_id = ?;",
-            (req.budget, session_id),
+            (None if req.budget is None or req.budget <= 0 else req.budget, session_id),
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Session not found.")
@@ -107,7 +108,7 @@ def update_budget(session_id: int, req: BudgetUpdate):
 
 
 @router.post("/message")
-def agent_message(req: AgentMessageIn):
+def agent_message(req: AgentMessageIn, user=Depends(get_optional_user)):
     """
     Stream SSE events for one user turn.
 
@@ -127,8 +128,35 @@ def agent_message(req: AgentMessageIn):
     if row["status"] != "ACTIVE":
         raise HTTPException(400, f"Session is {row['status']}.")
 
+    user_context = None
+    if user:
+        conn = sqlite_mod.get_connection()
+        try:
+            profile = conn.execute(
+                "SELECT name, first_middle_name, email, city, state, mobile_number "
+                "FROM users WHERE user_id = ?", (user["user_id"],)
+            ).fetchone()
+            co_travellers = conn.execute(
+                "SELECT first_middle_name, last_name, gender, dob, relationship "
+                "FROM co_travellers WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+                (user["user_id"],),
+            ).fetchall()
+            wishlist = conn.execute(
+                "SELECT DISTINCT source_city, destination_city FROM wishlist "
+                "WHERE user_id = ? ORDER BY source_city, destination_city",
+                (user["user_id"],),
+            ).fetchall()
+        finally:
+            conn.close()
+        if profile:
+            user_context = {
+                **dict(profile),
+                "co_travellers": [dict(row) for row in co_travellers],
+                "wishlist_routes": [dict(row) for row in wishlist],
+            }
+
     return StreamingResponse(
-        orchestrator.stream_response(req.session_id, req.content),
+        orchestrator.stream_response(req.session_id, req.content, user_context=user_context),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -17,12 +17,6 @@ import { processBookingPayment } from '../utils/razorpay';
 import { useAuth } from '../context/AuthContext';
 import { getBookableDateRange } from '../utils/flightUtils';
 
-const QUICK_CHIPS = [
-  'Find cheapest non-stop Delhi to Mumbai flight next week',
-  'Compare morning flights from Bangalore to Delhi',
-  'Find alternatives if no Business class flights under ₹8,000',
-];
-
 function RankedFlightsCard({ data, onQuickReply }) {
   const { isWishlisted, toggleWishlist } = useAuth();
   const fallbackDate = getBookableDateRange().defaultDate;
@@ -292,6 +286,7 @@ function StepJsonBlock({ step }) {
 }
 
 export default function AgentPage() {
+  const { user } = useAuth();
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -315,6 +310,14 @@ export default function AgentPage() {
   const chatEndRef = useRef(null);
   const activityEndRef = useRef(null);
   const initialSentRef = useRef(false);
+  const firstName = user?.first_middle_name?.trim().split(/\s+/)[0] || user?.name?.trim().split(/\s+/)[0] || 'there';
+  const quickChips = [
+    user?.city
+      ? `My budget is ₹7,000 — find cheapest non-stop flight from ${user.city} to Mumbai`
+      : 'Find cheapest non-stop Delhi to Mumbai flight next week',
+    'Compare morning flights from Bangalore to Delhi',
+    'Find alternatives if no Business class flights under ₹8,000',
+  ];
 
   // Create session if visited at /agent without :sessionId
   useEffect(() => {
@@ -418,6 +421,12 @@ export default function AgentPage() {
             streamedCards = [...streamedCards, card];
             setLiveCards([...streamedCards]);
           },
+          onBudgetUpdated: (event) => {
+            const cap = event.budget_cap ?? null;
+            setSession((current) => current ? { ...current, budget: cap } : current);
+            setBudgetInput(cap ? String(cap) : '');
+            setEditingBudget(false);
+          },
           onAssistantMessage: (msg) => {
             setLiveCards([]);
             setMessages((prev) => [
@@ -476,6 +485,21 @@ export default function AgentPage() {
     }
   };
 
+  const handleQuickBudget = async (amount) => {
+    if (!sessionId || savingBudget) return;
+    setSavingBudget(true);
+    try {
+      const updated = await updateSessionBudget(Number(sessionId), amount);
+      setSession(updated);
+      setBudgetInput(updated.budget ? String(updated.budget) : '');
+      setEditingBudget(false);
+    } catch (err) {
+      setError(err.message || 'Failed to update budget.');
+    } finally {
+      setSavingBudget(false);
+    }
+  };
+
   const handleNewSession = async () => {
     try {
       const s = await createAgentSession(null);
@@ -490,57 +514,6 @@ export default function AgentPage() {
       {/* Session Subheader Bar */}
       <header className="w-full flex-none h-14 bg-surface-container-low border-b border-surface-container-highest px-4 lg:px-8 flex items-center justify-between gap-4 z-20">
         <div className="flex items-center gap-3 min-w-0">
-          {/* Budget Cap Pill */}
-          {editingBudget ? (
-            <form onSubmit={handleSaveBudget} className="flex items-center gap-1.5">
-              <div className="flex items-center bg-surface-container-high border border-tertiary/50 rounded-full px-3 py-1 text-xs">
-                <span className="text-tertiary font-mono mr-1">₹</span>
-                <input
-                  type="number"
-                  min={500}
-                  step={100}
-                  autoFocus
-                  value={budgetInput}
-                  onChange={(e) => setBudgetInput(e.target.value)}
-                  placeholder="7000"
-                  className="w-20 bg-transparent text-white font-mono font-bold focus:outline-none"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={savingBudget}
-                className="px-2.5 py-1 rounded-full bg-secondary-container text-white text-xs font-semibold"
-              >
-                {savingBudget ? '...' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingBudget(false)}
-                className="px-2 py-1 text-xs text-on-surface-variant hover:text-white"
-              >
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container-high border border-tertiary/30 text-tertiary shadow-[0_0_12px_rgba(176,144,255,0.18)]">
-              <span className="material-symbols-outlined text-[15px]">
-                account_balance_wallet
-              </span>
-              <span className="text-xs font-semibold tracking-wide">Budget Cap:</span>
-              <span className="text-xs font-bold text-on-surface font-mono">
-                {session?.budget ? formatINR(session.budget) : 'Not Set'}
-              </span>
-              <button
-                type="button"
-                onClick={() => setEditingBudget(true)}
-                aria-label="Edit Budget"
-                className="ml-0.5 p-0.5 rounded hover:bg-surface-variant transition-colors text-on-surface-variant hover:text-on-surface"
-              >
-                <span className="material-symbols-outlined text-[14px]">edit</span>
-              </button>
-            </div>
-          )}
-
           {session && (
             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface-container text-xs text-on-surface-variant">
               <span className="relative flex h-2 w-2">
@@ -587,14 +560,15 @@ export default function AgentPage() {
                   <span className="material-symbols-outlined text-2xl">psychology</span>
                 </div>
                 <h2 className="font-headline font-bold text-lg text-white">
-                  Welcome to SkyAgent Concierge
+                  {user ? `Hello ${firstName}!` : 'Welcome to SkyAgent Concierge'}
                 </h2>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Set an optional ₹ budget cap above, then ask me to search, rank, compare, or book
-                  flights across Delhi, Mumbai, Bangalore, Kolkata, Hyderabad, and Chennai.
+                  {user
+                    ? "Tell me your budget and where you want to go today — I'll search, compare, and book the best flights for you."
+                    : "Tell me your budget and where you want to go — I'll search, compare, and book flights for you."}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2 pt-1">
-                  {QUICK_CHIPS.map((chip) => (
+                  {quickChips.map((chip) => (
                     <button
                       key={chip}
                       type="button"
@@ -689,6 +663,26 @@ export default function AgentPage() {
 
           {/* Sticky Chat Input */}
           <footer className="flex-none p-4 bg-surface-container-low border-t border-surface-container-highest">
+            <div className="mb-3 rounded-xl border border-surface-container-highest bg-surface-container px-3.5 py-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button type="button" onClick={() => { setBudgetInput(session?.budget ? String(session.budget) : ''); setEditingBudget((current) => !current); }} className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface hover:text-primary">
+                  <span className={`w-2 h-2 rounded-full ${session?.budget ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]' : 'bg-surface-bright'}`} />
+                  <span>Budget Cap: {session?.budget ? formatINR(session.budget) : 'Not Set'}</span>
+                  <span className="material-symbols-outlined text-sm text-on-surface-variant">edit</span>
+                </button>
+                {Boolean(session?.budget) && <button type="button" onClick={() => handleQuickBudget(0)} aria-label="Clear budget cap" title="Clear budget cap" className="w-6 h-6 rounded-full text-on-surface-variant hover:text-rose-300 hover:bg-rose-500/10 text-base leading-none">×</button>}
+                <span className="hidden sm:block h-4 w-px bg-surface-container-highest" />
+                {[5000, 8000, 12000].map((amount) => <button key={amount} type="button" disabled={savingBudget} onClick={() => handleQuickBudget(amount)} className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono transition-colors disabled:opacity-50 ${Number(session?.budget) === amount ? 'bg-primary/15 border-primary/30 text-primary' : 'bg-surface-container-high border-surface-container-highest text-on-surface-variant hover:text-on-surface hover:border-primary/30'}`}>{formatINR(amount)}</button>)}
+                <button type="button" onClick={() => { setBudgetInput(''); setEditingBudget(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300/20 bg-indigo-400/10 text-indigo-200 text-[11px] font-semibold hover:bg-indigo-400/20">Custom ₹</button>
+              </div>
+              {editingBudget && <form onSubmit={handleSaveBudget} className="mt-2.5 flex flex-wrap items-center gap-2">
+                <label htmlFor="agent-budget-input" className="sr-only">Custom budget cap in rupees</label>
+                <span className="text-xs text-on-surface-variant">Custom cap</span><span className="text-primary">₹</span>
+                <input id="agent-budget-input" type="number" min={500} step={100} autoFocus value={budgetInput} onChange={(event) => setBudgetInput(event.target.value)} placeholder="e.g. 7000" className="w-28 px-2.5 py-1.5 rounded-lg bg-surface-container-high border border-surface-container-highest text-xs text-on-surface font-mono outline-none focus:border-primary/50" />
+                <button type="submit" disabled={savingBudget} className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-semibold disabled:opacity-50">{savingBudget ? 'Saving…' : 'Set cap'}</button>
+                <button type="button" onClick={() => setEditingBudget(false)} className="px-2 py-1.5 text-xs text-on-surface-variant hover:text-on-surface">Cancel</button>
+              </form>}
+            </div>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -747,7 +741,8 @@ export default function AgentPage() {
                 </span>
                 <p className="font-medium text-on-surface">No tool executions yet</p>
                 <p>
-                  When SkyAgent calls <span className="font-mono text-primary">search_flights</span>
+                  When SkyAgent calls <span className="font-mono text-primary">set_budget_cap</span>,{' '}
+                  <span className="font-mono text-primary">search_flights</span>
                   , <span className="font-mono text-primary">rank_flights</span>,{' '}
                   <span className="font-mono text-primary">create_booking</span>, or{' '}
                   <span className="font-mono text-primary">create_payment_order</span>, live SSE

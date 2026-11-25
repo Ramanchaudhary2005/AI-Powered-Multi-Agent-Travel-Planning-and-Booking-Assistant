@@ -4,6 +4,8 @@ Agent router — session management + SSE message streaming.
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,6 +15,17 @@ from backend.db import sqlite as sqlite_mod
 from backend.routers.auth import get_optional_user
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
+
+
+def _age_from_dob(dob: str | None) -> int | None:
+    if not dob:
+        return None
+    try:
+        born = date.fromisoformat(dob)
+    except (TypeError, ValueError):
+        return None
+    today = date.today()
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
 # ── Request / response models ────────────────────────────────────────────
@@ -133,7 +146,8 @@ def agent_message(req: AgentMessageIn, user=Depends(get_optional_user)):
         conn = sqlite_mod.get_connection()
         try:
             profile = conn.execute(
-                "SELECT name, first_middle_name, email, city, state, mobile_number "
+                "SELECT name, first_middle_name, email, city, state, mobile_number, "
+                "dob, gender, nationality "
                 "FROM users WHERE user_id = ?", (user["user_id"],)
             ).fetchone()
             co_travellers = conn.execute(
@@ -149,9 +163,16 @@ def agent_message(req: AgentMessageIn, user=Depends(get_optional_user)):
         finally:
             conn.close()
         if profile:
+            primary_profile = dict(profile)
+            primary_profile["age"] = _age_from_dob(primary_profile.get("dob"))
+            saved_co_travellers = []
+            for row in co_travellers:
+                traveller = dict(row)
+                traveller["age"] = _age_from_dob(traveller.get("dob"))
+                saved_co_travellers.append(traveller)
             user_context = {
-                **dict(profile),
-                "co_travellers": [dict(row) for row in co_travellers],
+                **primary_profile,
+                "co_travellers": saved_co_travellers,
                 "wishlist_routes": [dict(row) for row in wishlist],
             }
 

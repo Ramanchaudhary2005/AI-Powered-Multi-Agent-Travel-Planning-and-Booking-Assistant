@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import {
   createAgentSession,
   getSessionSteps,
@@ -16,6 +17,15 @@ import {
 import { processBookingPayment } from '../utils/razorpay';
 import { useAuth } from '../context/AuthContext';
 import { getBookableDateRange } from '../utils/flightUtils';
+
+const CHAT_MARKDOWN_COMPONENTS = {
+  p: ({ children }) => <p className="my-2 leading-relaxed first:mt-0 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+  em: ({ children }) => <em className="italic text-indigo-100">{children}</em>,
+  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-primary">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-primary">{children}</ol>,
+  li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
+};
 
 function RankedFlightsCard({ data, onQuickReply }) {
   const { isWishlisted, toggleWishlist } = useAuth();
@@ -614,8 +624,8 @@ export default function AgentPage() {
                         </span>
                       </div>
 
-                      <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap bg-surface-container/60 border border-surface-container-highest rounded-xl p-3.5">
-                        {m.content}
+                      <div className="text-sm text-on-surface-variant leading-relaxed break-words bg-surface-container/60 border border-surface-container-highest rounded-xl p-3.5">
+                        <ReactMarkdown components={CHAT_MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>
                       </div>
 
                       {uiPayload?.type === 'RANKED_FLIGHTS' && (

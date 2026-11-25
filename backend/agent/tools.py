@@ -313,6 +313,14 @@ def execute(
             companions = user_context.get("co_travellers", [])
             for passenger in passengers:
                 requested = str(passenger.get("name") or "").strip().lower()
+                primary_name = str(user_context.get("name") or user_context.get("first_middle_name") or "").strip()
+                if requested in {"me", "myself", "self", "primary user"} or (primary_name and primary_name.lower() in requested):
+                    passenger["name"] = primary_name or passenger.get("name")
+                    if user_context.get("age") is not None:
+                        passenger["age"] = user_context["age"]
+                    if user_context.get("gender"):
+                        passenger["gender"] = {"Male": "M", "Female": "F"}.get(user_context["gender"], user_context["gender"])
+                    continue
                 relationship_aliases = {
                     "spouse": ("wife", "husband", "partner"),
                     "child": ("son", "daughter", "kid"),
@@ -330,7 +338,9 @@ def execute(
                     if match.get("gender"):
                         gender = match["gender"]
                         passenger["gender"] = {"Male": "M", "Female": "F"}.get(gender, gender)
-                    if match.get("dob"):
+                    if match.get("age") is not None:
+                        passenger["age"] = match["age"]
+                    elif match.get("dob"):
                         try:
                             born = date.fromisoformat(match["dob"])
                             today = date.today()

@@ -31,10 +31,9 @@ RETRY_BACKOFF_SECONDS = 1.5
 def _fallback_models() -> list[str]:
     candidates = [
         config.GEMINI_MODEL,
-        "gemini-3.8-flash",
-        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash",
         "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
     ]
     return list(dict.fromkeys(m for m in candidates if m))
 
@@ -115,7 +114,7 @@ def _build_system_prompt(session: dict, user_context: dict | None = None) -> str
         profile_block = (
             "[Logged-in User Context]\n"
             + json.dumps(user_context, ensure_ascii=False, default=str)
-            + "\nUse this private profile context only to personalize assistance and fill details the user has asked you to use. Never reveal credentials or ask the user to repeat saved co-traveller details.\n\n"
+            + "\nUse this private profile context only to personalize assistance and fill details the user has asked you to use. Never reveal credentials. The primary user's name, email, age, and gender are their saved booking details; each saved co-traveller also has their saved name, age, and gender.\n\n"
         )
     return (
         "You are SkyAgent, a friendly and efficient flight-booking assistant "
@@ -132,8 +131,7 @@ def _build_system_prompt(session: dict, user_context: dict | None = None) -> str
         "3. Use rank_flights to compare and recommend the best options.\n"
         "4. If no flights match, use find_alternatives to broaden the search.\n"
         "5. Present options clearly with prices, times, and stops.\n"
-        "6. When the user picks a flight, collect passenger details "
-        "(full name, age, gender for each passenger) and email.\n"
+        "6. When the user picks a flight, guests without profile context should provide passenger name, age, gender, and contact email as before. For a logged-in user, use their saved name, email, age, and gender from [Logged-in User Context] when booking for them. For a saved co-traveller, use that person's saved name, age, and gender, and use the logged-in user's email as the booking contact. Never ask the user to repeat any known values. Ask for a booking field (name, email, age, or gender) only when that specific value is missing or null from the applicable logged-in context.\n"
         "7. Use create_booking to hold the seats.\n"
         "8. Use create_payment_order to generate a payment order.\n\n"
         "STRICT RULES:\n"

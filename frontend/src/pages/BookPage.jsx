@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { createBooking, getFlightById } from '../api/client';
+import { getCoTravellers } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import {
   formatDisplayDate,
   formatDuration,
@@ -15,6 +17,7 @@ export default function BookPage() {
   const { flightId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user, setLoginOpen } = useAuth();
   const dateRange = useMemo(() => getBookableDateRange(), []);
 
   const travelDate = searchParams.get('travel_date') || dateRange.defaultDate;
@@ -30,6 +33,20 @@ export default function BookPage() {
   );
   const [email, setEmail] = useState(() => localStorage.getItem('flightagent_last_email') || '');
   const [phone, setPhone] = useState('');
+  const [coTravellers, setCoTravellers] = useState([]);
+
+  useEffect(() => {
+    if (!user) return;
+    setEmail(user.email || '');
+    setPhone(user.mobile_number || '');
+    const firstName = [user.first_middle_name, user.last_name].filter(Boolean).join(' ') || user.name || '';
+    const birth = user.dob ? new Date(user.dob) : null;
+    const age = birth ? Math.max(1, Math.floor((Date.now() - birth.getTime()) / 31557600000)) : 28;
+    setPassengers((current) => current.map((passenger, index) => index === 0 && !passenger.name
+      ? { ...passenger, name: firstName, age, gender: user.gender === 'Male' ? 'M' : user.gender === 'Female' ? 'F' : user.gender || 'M' }
+      : passenger));
+    getCoTravellers().then(setCoTravellers).catch(() => setCoTravellers([]));
+  }, [user]);
 
   useEffect(() => {
     setPassengers((prev) => {
@@ -61,6 +78,18 @@ export default function BookPage() {
     setPassengers((prev) =>
       prev.map((p, i) => (i === idx ? { ...p, [field]: val } : p))
     );
+  };
+
+  const addCoTraveller = (traveller) => {
+    const name = [traveller.first_middle_name, traveller.last_name].filter(Boolean).join(' ');
+    const birth = traveller.dob ? new Date(traveller.dob) : null;
+    const age = birth ? Math.max(1, Math.floor((Date.now() - birth.getTime()) / 31557600000)) : 28;
+    const gender = traveller.gender === 'Male' ? 'M' : traveller.gender === 'Female' ? 'F' : traveller.gender || 'Other';
+    setPassengers((current) => {
+      const emptyIndex = current.findIndex((passenger) => !passenger.name.trim());
+      if (emptyIndex < 0) return current;
+      return current.map((passenger, index) => index === emptyIndex ? { ...passenger, name, age, gender } : passenger);
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -235,6 +264,7 @@ export default function BookPage() {
                 </div>
               ))}
             </div>
+            {user && coTravellers.length > 0 && <div className="rounded-xl border border-indigo-300/15 bg-indigo-400/5 p-4"><p className="text-xs font-semibold text-indigo-200 mb-2.5">Quick add a saved co-traveller</p><div className="flex flex-wrap gap-2">{coTravellers.map((traveller) => <button key={traveller.id} type="button" onClick={() => addCoTraveller(traveller)} className="px-3 py-1.5 rounded-full border border-indigo-300/20 bg-indigo-400/10 text-indigo-100 text-xs hover:bg-indigo-400/20">+ Add {[traveller.first_middle_name, traveller.last_name].filter(Boolean).join(' ')}</button>)}</div></div>}
 
             {/* Contact Info */}
             <div className="pt-4 border-t border-surface-variant/40 space-y-4">

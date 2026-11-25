@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getFlightMeta, searchFlights } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import {
   TIME_SLOT_META,
   annotateFlightsWithBadges,
@@ -23,6 +24,7 @@ const STOPS_OPTIONS = [
 export default function ResultsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { isWishlisted, toggleWishlist } = useAuth();
   const dateRange = useMemo(() => getBookableDateRange(), []);
 
   const sourceCity = searchParams.get('source_city') || 'Delhi';
@@ -561,6 +563,9 @@ export default function ResultsPage() {
                     </div>
 
                     <div className="flex items-center gap-2 text-xs font-medium">
+                      <button type="button" aria-pressed={isWishlisted(flight.flight_id, travelDate)} aria-label={isWishlisted(flight.flight_id, travelDate) ? 'Remove from wishlist' : 'Add to wishlist'} title={isWishlisted(flight.flight_id, travelDate) ? 'Remove from wishlist' : 'Save flight'} onClick={() => toggleWishlist({ ...flight, travel_date: travelDate })} className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${isWishlisted(flight.flight_id, travelDate) ? 'bg-rose-500/15 border-rose-300/30 text-rose-300' : 'bg-surface-container border-surface-container-highest text-on-surface-variant hover:text-rose-300 hover:border-rose-300/30'}`}>
+                        <span className="material-symbols-outlined text-[19px]">{isWishlisted(flight.flight_id, travelDate) ? 'favorite' : 'favorite'}</span>
+                      </button>
                       <span
                         className={`px-2.5 py-0.5 rounded font-mono ${
                           flight.live_seats_left <= 6

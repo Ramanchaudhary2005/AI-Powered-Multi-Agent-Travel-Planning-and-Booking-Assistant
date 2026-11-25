@@ -216,6 +216,8 @@ def execute(
             stops=args.get("stops"),
             departure_time=args.get("departure_time"),
         )
+        for flight in results:
+            flight["travel_date"] = args["travel_date"]
         context["last_search_results"] = results
         # Return summary for the LLM (top 10), keep full list in context
         preview = results[:10]
@@ -246,6 +248,8 @@ def execute(
             stops=args.get("stops"),
             departure_time=args.get("departure_time"),
         )
+        for flight in result.get("flights", []):
+            flight["travel_date"] = args["travel_date"]
         context["last_search_results"] = result.get("flights", [])
         preview = result["flights"][:10]
         return {

@@ -14,6 +14,8 @@ import {
   getCityCode,
 } from '../utils/flightUtils';
 import { processBookingPayment } from '../utils/razorpay';
+import { useAuth } from '../context/AuthContext';
+import { getBookableDateRange } from '../utils/flightUtils';
 
 const QUICK_CHIPS = [
   'Find cheapest non-stop Delhi to Mumbai flight next week',
@@ -22,6 +24,8 @@ const QUICK_CHIPS = [
 ];
 
 function RankedFlightsCard({ data, onQuickReply }) {
+  const { isWishlisted, toggleWishlist } = useAuth();
+  const fallbackDate = getBookableDateRange().defaultDate;
   const flights = data?.top_3 || (data?.best_pick ? [data.best_pick] : []);
   if (flights.length === 0) return null;
 
@@ -110,6 +114,8 @@ function RankedFlightsCard({ data, onQuickReply }) {
                   {f.live_seats_left} seats left
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+              <button type="button" aria-label={isWishlisted(f.flight_id, f.travel_date || fallbackDate) ? 'Remove from wishlist' : 'Add to wishlist'} onClick={() => toggleWishlist({ ...f, travel_date: f.travel_date || fallbackDate })} className={`p-2 rounded-full border transition-colors ${isWishlisted(f.flight_id, f.travel_date || fallbackDate) ? 'text-rose-300 bg-rose-500/15 border-rose-300/30' : 'text-on-surface-variant bg-surface-container border-surface-container-highest hover:text-rose-300'}`}><span className="material-symbols-outlined text-lg">favorite</span></button>
               <button
                 type="button"
                 onClick={() =>
@@ -123,6 +129,7 @@ function RankedFlightsCard({ data, onQuickReply }) {
               >
                 Select Flight
               </button>
+              </div>
             </div>
           </div>
         );

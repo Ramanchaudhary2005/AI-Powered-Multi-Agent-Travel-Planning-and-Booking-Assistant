@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   getBookingByPnr,
   getBookingsByEmail,
+  getMyBookings,
   getFlightById,
   getTicketPdfUrl,
 } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import {
   formatDisplayDate,
   formatDuration,
@@ -43,6 +45,7 @@ function HoldCountdown({ holdExpires }) {
 
 export default function MyBookingsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [query, setQuery] = useState(
     () => localStorage.getItem('flightagent_last_lookup') || localStorage.getItem('flightagent_last_email') || ''
   );
@@ -54,7 +57,7 @@ export default function MyBookingsPage() {
 
   const performLookup = useCallback(async (rawTerm) => {
     const term = rawTerm.trim();
-    if (!term) return;
+    if (!term && !user) return;
 
     setLoading(true);
     setError('');
@@ -62,7 +65,9 @@ export default function MyBookingsPage() {
 
     try {
       let list = [];
-      if (term.includes('@')) {
+      if (!term) {
+        list = await getMyBookings();
+      } else if (term.includes('@')) {
         list = await getBookingsByEmail(term);
       } else {
         const single = await getBookingByPnr(term);
@@ -89,14 +94,17 @@ export default function MyBookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    if (query.trim()) {
+    if (query.trim() && !user) {
       performLookup(query);
+    } else if (user) {
+      setQuery('');
+      performLookup('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user, performLookup]);
 
   const counts = useMemo(() => {
     return {

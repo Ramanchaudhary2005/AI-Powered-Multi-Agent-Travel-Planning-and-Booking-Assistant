@@ -8,6 +8,8 @@ import MyBookingsPage from './pages/MyBookingsPage';
 import PayPage from './pages/PayPage';
 import ResultsPage from './pages/ResultsPage';
 import TicketPage from './pages/TicketPage';
+import ProfilePage from './pages/ProfilePage';
+import WishlistPage from './pages/WishlistPage';
 
 function AppShell() {
   const { pathname } = useLocation();
@@ -26,6 +28,9 @@ function AppShell() {
           <Route path="/agent" element={<AgentPage />} />
           <Route path="/agent/:sessionId" element={<AgentPage />} />
           <Route path="/my-bookings" element={<MyBookingsPage />} />
+          <Route path="/bookings" element={<MyBookingsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/wishlist" element={<WishlistPage />} />
         </Routes>
       </main>
       {!isAgentRoute && <Footer />}

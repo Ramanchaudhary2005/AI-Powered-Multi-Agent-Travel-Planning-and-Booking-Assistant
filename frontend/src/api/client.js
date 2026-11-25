@@ -1,12 +1,14 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 async function request(path, options = {}) {
+  const token = localStorage.getItem('flightagent_jwt');
   const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   });
 
   if (!res.ok) {
@@ -61,6 +63,55 @@ export function getBookingsByEmail(email) {
   return request(`/api/bookings?${qs}`);
 }
 
+export function getMyBookings() {
+  return request('/api/bookings');
+}
+
+export function googleAuth(credential) {
+  return request('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
+}
+
+export function getMyProfile() {
+  return request('/api/auth/me');
+}
+
+export function getProfile() {
+  return request('/api/profile');
+}
+
+export function updateProfile(payload) {
+  return request('/api/profile', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function getCoTravellers() {
+  return request('/api/profile/co-travellers');
+}
+
+export function createCoTraveller(payload) {
+  return request('/api/profile/co-travellers', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateCoTraveller(id, payload) {
+  return request(`/api/profile/co-travellers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function deleteCoTraveller(id) {
+  return request(`/api/profile/co-travellers/${id}`, { method: 'DELETE' });
+}
+
+export function getWishlist() {
+  return request('/api/wishlist');
+}
+
+export function saveWishlistFlight(payload) {
+  return request('/api/wishlist', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function deleteWishlistFlight(flightId, travelDate) {
+  const qs = travelDate ? `?travel_date=${encodeURIComponent(travelDate)}` : '';
+  return request(`/api/wishlist/${encodeURIComponent(flightId)}${qs}`, { method: 'DELETE' });
+}
+
 export function getTicketPdfUrl(pnr) {
   return `${API_BASE}/api/bookings/${encodeURIComponent(pnr.trim().toUpperCase())}/ticket.pdf`;
 }
@@ -110,11 +161,13 @@ export async function streamAgentMessage(
   content,
   { onStepUpdate, onUiCard, onAssistantMessage, onDone, onError, signal } = {}
 ) {
+  const token = localStorage.getItem('flightagent_jwt');
   const res = await fetch(`${API_BASE}/api/agent/message`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ session_id: sessionId, content }),
     signal,

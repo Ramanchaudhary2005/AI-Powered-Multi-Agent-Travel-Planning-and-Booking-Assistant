@@ -44,6 +44,7 @@ def create_booking(
     phone: str | None = None,
     booked_via: str = "MANUAL",
     session_id: int | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     """
     Atomically book seats.
@@ -96,17 +97,20 @@ def create_booking(
             )
 
         # Get or create user
-        user_row = conn.execute(
-            "SELECT user_id FROM users WHERE email = ?;", (email,)
-        ).fetchone()
-        if user_row:
-            user_id = user_row[0]
+        if user_id is not None:
+            user_row = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if user_row is None:
+                raise ValueError("Authenticated user does not exist.")
         else:
-            cur = conn.execute(
-                "INSERT INTO users (name, email, phone) VALUES (?, ?, ?);",
-                (name, email, phone),
-            )
-            user_id = cur.lastrowid
+            user_row = conn.execute("SELECT user_id FROM users WHERE email = ?;", (email,)).fetchone()
+            if user_row:
+                user_id = user_row[0]
+            else:
+                cur = conn.execute(
+                    "INSERT INTO users (name, email, phone) VALUES (?, ?, ?);",
+                    (name, email, phone),
+                )
+                user_id = cur.lastrowid
 
         # Generate PNR + hold
         pnr = _generate_pnr(conn)
@@ -188,3 +192,17 @@ def get_bookings_by_email(email: str) -> list[dict[str, Any]]:
     finally:
         conn.close()
     return bookings
+
+
+def get_bookings_by_user_id(user_id: int) -> list[dict[str, Any]]:
+    """Return bookings linked to the authenticated user."""
+    conn = sqlite_mod.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT booking_id, pnr, user_id, flight_id, travel_date, passenger_count, total_amount, "
+            "status, booked_via, session_id, hold_expires, created_at FROM bookings "
+            "WHERE user_id=? ORDER BY created_at DESC", (user_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()

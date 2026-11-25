@@ -119,10 +119,58 @@ CREATE TABLE IF NOT EXISTS agent_steps (
 
 
 def init_db() -> None:
-    """Create all tables and indexes if they don't already exist."""
+    """Create tables and safely add columns introduced by later app versions."""
     conn = get_connection()
     try:
         conn.executescript(_SCHEMA_SQL)
+        user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users);")}
+        additions = {
+            "google_sub": "TEXT",
+            "avatar_url": "TEXT",
+            "first_middle_name": "TEXT",
+            "last_name": "TEXT",
+            "gender": "TEXT",
+            "dob": "TEXT",
+            "nationality": "TEXT DEFAULT 'Indian'",
+            "marital_status": "TEXT",
+            "anniversary": "TEXT",
+            "city": "TEXT",
+            "state": "TEXT",
+            "mobile_number": "TEXT",
+            "updated_at": "TEXT",
+        }
+        for column, definition in additions.items():
+            if column not in user_columns:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} {definition};")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);")
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS co_travellers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                first_middle_name TEXT NOT NULL,
+                last_name TEXT,
+                gender TEXT,
+                dob TEXT,
+                relationship TEXT,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS wishlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                flight_id TEXT NOT NULL,
+                airline TEXT,
+                flight_code TEXT,
+                source_city TEXT,
+                destination_city TEXT,
+                travel_date TEXT,
+                flight_class TEXT,
+                price_when_saved REAL,
+                duration_hrs REAL,
+                stops TEXT,
+                created_at TEXT,
+                UNIQUE(user_id, flight_id, travel_date)
+            );
+        """)
         conn.commit()
     finally:
         conn.close()

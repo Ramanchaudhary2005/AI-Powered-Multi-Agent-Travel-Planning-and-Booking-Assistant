@@ -4,27 +4,29 @@ Bookings router — create, lookup by PNR / email, download PDF ticket.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from backend.schemas import BookingOut, BookingRequest
 from backend.services import booking_service, ticket_service
+from backend.routers.auth import get_optional_user
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
 
 @router.post("", response_model=BookingOut, status_code=201)
-def create_booking(req: BookingRequest):
+def create_booking(req: BookingRequest, user=Depends(get_optional_user)):
     try:
         booking = booking_service.create_booking(
             flight_id=req.flight_id,
             travel_date=req.travel_date,
             passengers=[p.model_dump() for p in req.passengers],
-            email=req.email,
-            name=req.name,
-            phone=req.phone,
+            email=user["email"] if user else req.email,
+            name=user["name"] if user else req.name,
+            phone=(user.get("mobile_number") or user.get("phone")) if user else req.phone,
             booked_via=req.booked_via,
             session_id=req.session_id,
+            user_id=user["user_id"] if user else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -32,8 +34,12 @@ def create_booking(req: BookingRequest):
 
 
 @router.get("", response_model=list[BookingOut])
-def list_bookings(email: str = Query(...)):
-    return booking_service.get_bookings_by_email(email)
+def list_bookings(email: str | None = Query(default=None), user=Depends(get_optional_user)):
+    if email is not None:
+        return booking_service.get_bookings_by_email(email)
+    if user is not None:
+        return booking_service.get_bookings_by_user_id(user["user_id"])
+    raise HTTPException(status_code=400, detail="Provide email or sign in to list bookings.")
 
 
 @router.get("/{pnr}", response_model=BookingOut)

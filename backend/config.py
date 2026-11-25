@@ -26,3 +26,7 @@ GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
 MOCK_RAZORPAY: bool = os.getenv("MOCK_RAZORPAY", "false").lower() in ("true", "1", "yes")
+
+# Google sign-in and application JWTs
+GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-only-change-me-before-deploying")

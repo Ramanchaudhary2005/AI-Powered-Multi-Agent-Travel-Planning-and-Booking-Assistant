@@ -1,0 +1,45 @@
+# Environment & Secrets (NEVER commit)
+.env
+.env.*
+frontend/.env
+frontend/.env.*
+!.env.example
+!frontend/.env.example
+
+# Databases, Large CSVs & Generated Tickets
+data/*.csv
+data/*.duckdb
+data/*.duckdb.wal
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite
+data/*.sqlite3
+*.pdf
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Frontend / Node / Vite
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+*.local
+npm-debug.log*
+
+# OS & Editors
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

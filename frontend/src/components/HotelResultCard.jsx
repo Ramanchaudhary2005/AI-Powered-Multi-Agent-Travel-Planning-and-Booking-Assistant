@@ -1,6 +1,6 @@
 const formatHotelINR = (amount) => `₹${Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
-export default function HotelResultCard({ hotel, onPlan }) {
+export default function HotelResultCard({ hotel, onPlan, onBook }) {
   const taxAmount = hotel.tax_is_estimated ? hotel.estimated_tax_inr : hotel.tax_inr;
   const ratingDescription = hotel.rating_description || 'Guest rating';
 
@@ -73,13 +73,21 @@ export default function HotelResultCard({ hotel, onPlan }) {
 
       <button
         type="button"
+        onClick={() => onBook?.(hotel)}
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-on-primary transition hover:bg-emerald-400"
+      >
+        <span className="material-symbols-outlined text-base">hotel</span>
+        Book Hotel
+      </button>
+      <button
+        type="button"
         onClick={() => onPlan?.(hotel)}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-secondary/30 bg-secondary-container/70 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-secondary-container"
+        className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-secondary/30 bg-secondary-container/70 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-secondary-container"
       >
         <span className="material-symbols-outlined text-base">auto_awesome</span>
         Plan with SkyAgent
       </button>
-      <p className="mt-2 text-center text-[10px] text-on-surface-variant/80">Indicative hotel listing · guided planning only</p>
+      <p className="mt-2 text-center text-[10px] text-on-surface-variant/80">Select Hotel or combine with a Flight for Complete Package checkout</p>
     </article>
   );
 }

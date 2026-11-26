@@ -135,6 +135,16 @@ export function getTicketPdfUrl(pnr) {
   return `${API_BASE}/api/bookings/${encodeURIComponent(pnr.trim().toUpperCase())}/ticket.pdf`;
 }
 
+export function createHotelBooking(payload) { return request('/api/hotel-bookings', { method: 'POST', body: JSON.stringify(payload) }); }
+export function verifyHotelBookingPayment(bookingRef, payload) { return request(`/api/hotel-bookings/${encodeURIComponent(bookingRef)}/verify-payment`, { method: 'POST', body: JSON.stringify(payload) }); }
+export function getHotelBooking(bookingRef) { return request(`/api/hotel-bookings/${encodeURIComponent(bookingRef)}`); }
+export function getMyHotelBookings() { return request('/api/hotel-bookings/my'); }
+export function getHotelVoucherUrl(bookingRef) { return `${API_BASE}/api/hotel-bookings/${encodeURIComponent(bookingRef)}/voucher`; }
+export function createPackageBooking(payload) { return request('/api/packages/book', { method: 'POST', body: JSON.stringify(payload) }); }
+export function verifyPackagePayment(packageRef, payload) { return request(`/api/packages/${encodeURIComponent(packageRef)}/verify-payment`, { method: 'POST', body: JSON.stringify(payload) }); }
+export function getPackage(packageRef) { return request(`/api/packages/${encodeURIComponent(packageRef)}`); }
+export function getMyPackages() { return request('/api/packages/my'); }
+
 // ── Payments ─────────────────────────────────────────────────────────────
 
 export function createPaymentOrder(bookingId) {

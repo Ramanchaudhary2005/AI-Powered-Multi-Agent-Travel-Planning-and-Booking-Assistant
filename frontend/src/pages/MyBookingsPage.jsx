@@ -6,6 +6,9 @@ import {
   getMyBookings,
   getFlightById,
   getTicketPdfUrl,
+  getMyHotelBookings,
+  getMyPackages,
+  getHotelVoucherUrl,
 } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -54,6 +57,19 @@ export default function MyBookingsPage() {
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [copiedPnr, setCopiedPnr] = useState('');
+  const [section, setSection] = useState('Flights');
+  const [hotelBookings, setHotelBookings] = useState([]);
+  const [packages, setPackages] = useState([]);
+  const [extraLoading, setExtraLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) { setHotelBookings([]); setPackages([]); return; }
+    setExtraLoading(true);
+    Promise.all([getMyHotelBookings(), getMyPackages()])
+      .then(([hotels, packageRows]) => { setHotelBookings(hotels || []); setPackages(packageRows || []); })
+      .catch(() => { setHotelBookings([]); setPackages([]); })
+      .finally(() => setExtraLoading(false));
+  }, [user]);
 
   const performLookup = useCallback(async (rawTerm) => {
     const term = rawTerm.trim();
@@ -162,6 +178,12 @@ export default function MyBookingsPage() {
           </div>
         </div>
       </div>
+
+      <div className="flex w-fit gap-1 rounded-xl border border-surface-container-highest bg-surface-container p-1">
+        {['Flights', 'Hotels', 'Packages'].map((tab) => <button key={tab} type="button" onClick={() => setSection(tab)} className={`rounded-lg px-4 py-2 text-xs font-bold transition ${section === tab ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-white'}`}>{tab}{tab === 'Hotels' && hotelBookings.length ? ` (${hotelBookings.length})` : ''}{tab === 'Packages' && packages.length ? ` (${packages.length})` : ''}</button>)}
+      </div>
+
+      {section === 'Flights' ? <>
 
       {/* Search & Filter Card */}
       <div className="bg-surface-container border border-surface-container-highest rounded-xl p-5 md:p-6 shadow-md flex flex-col gap-5">
@@ -440,6 +462,14 @@ export default function MyBookingsPage() {
           </div>
         )}
       </div>
+      </> : (
+        <section className="space-y-4">
+          {!user ? <div className="rounded-2xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">Sign in to view your {section.toLowerCase()}.</div>
+            : extraLoading ? <div className="rounded-2xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">Loading your {section.toLowerCase()}…</div>
+              : section === 'Hotels' ? (hotelBookings.length ? hotelBookings.map((booking) => <article key={booking.booking_ref} className="flex flex-col gap-4 rounded-2xl border border-surface-container-highest bg-surface-container p-5 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold text-white">{booking.hotel_name}</h2><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${booking.status === 'CONFIRMED' ? 'bg-primary/15 text-primary' : 'bg-amber-300/10 text-amber-300'}`}>{booking.status}</span></div><p className="mt-1 text-xs text-on-surface-variant">{booking.booking_ref} · {booking.city} · {booking.check_in_date} → {booking.check_out_date} · {booking.nights} nights</p><p className="mt-1 text-sm font-semibold text-white">{formatINR(booking.total_amount_inr)}</p></div>{booking.status === 'CONFIRMED' && <a href={getHotelVoucherUrl(booking.booking_ref)} target="_blank" rel="noreferrer" className="rounded-xl border border-secondary/30 bg-secondary-container/50 px-4 py-2.5 text-xs font-bold text-white">Download Hotel Voucher PDF</a>}</article>) : <div className="rounded-2xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">No hotel bookings yet.</div>)
+                : (packages.length ? packages.map((pkg) => <article key={pkg.package_ref} className="rounded-2xl border border-surface-container-highest bg-surface-container p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-white">Complete Package · {pkg.package_ref}</h2><p className="mt-1 text-xs text-on-surface-variant">{pkg.flight_booking?.flight?.source_city} → {pkg.flight_booking?.flight?.destination_city} · {pkg.hotel_booking?.hotel_name} · {pkg.hotel_booking?.nights} nights</p><span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${pkg.status === 'CONFIRMED' ? 'bg-primary/15 text-primary' : 'bg-amber-300/10 text-amber-300'}`}>{pkg.status}</span></div><strong className="font-mono text-primary">{formatINR(Number(pkg.flight_booking?.total_amount || 0) + Number(pkg.hotel_booking?.total_amount_inr || 0))}</strong></div>{pkg.status === 'CONFIRMED' && <div className="mt-4 flex flex-wrap gap-2"><a href={getTicketPdfUrl(pkg.flight_booking.pnr)} target="_blank" rel="noreferrer" className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-on-primary">Flight E-Ticket PDF</a><a href={getHotelVoucherUrl(pkg.hotel_booking.booking_ref)} target="_blank" rel="noreferrer" className="rounded-lg border border-secondary/30 bg-secondary-container/50 px-3 py-2 text-xs font-bold text-white">Hotel Voucher PDF</a></div>}</article>) : <div className="rounded-2xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">No complete packages yet.</div>)}
+        </section>
+      )}
     </div>
   );
 }

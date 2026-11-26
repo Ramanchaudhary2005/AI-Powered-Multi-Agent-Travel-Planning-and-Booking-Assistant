@@ -519,7 +519,7 @@ export default function HomePage() {
             </div>
             {hotelResults.hotels.length ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {hotelResults.hotels.map((hotel) => <HotelResultCard key={hotel.hotel_id} hotel={hotel} onPlan={(item) => handleOpenAgent(`Help me plan a trip with ${item.hotel_name} in ${item.city} for ${hotelNights} ${hotelNights === 1 ? 'night' : 'nights'}. The indicative stay total is ₹${Math.round(item.stay_total_inr).toLocaleString('en-IN')}; compare it with flight options and my overall budget. Do not place a hotel booking.`)} />)}
+                {hotelResults.hotels.map((hotel) => <HotelResultCard key={hotel.hotel_id} hotel={hotel} onBook={(item) => navigate('/hotel-checkout', { state: { hotel: item, nights: hotelNights } })} onPlan={(item) => handleOpenAgent(`Help me plan a trip with ${item.hotel_name} in ${item.city} for ${hotelNights} ${hotelNights === 1 ? 'night' : 'nights'}. The indicative stay total is ₹${Math.round(item.stay_total_inr).toLocaleString('en-IN')}; compare it with flight options and my overall budget. Do not place a hotel booking.`)} />)}
               </div>
             ) : (
               <div className="rounded-xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">No stays match those filters. Try raising the nightly budget or lowering the rating filter.</div>

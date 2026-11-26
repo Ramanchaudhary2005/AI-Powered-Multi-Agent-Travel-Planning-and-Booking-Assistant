@@ -27,7 +27,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
   li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
 };
 
-function RankedFlightsCard({ data, onQuickReply }) {
+function RankedFlightsCard({ data, onQuickReply, onSelect, selectedFlightId }) {
   const { isWishlisted, toggleWishlist } = useAuth();
   const fallbackDate = getBookableDateRange().defaultDate;
   const flights = data?.top_3 || (data?.best_pick ? [data.best_pick] : []);
@@ -50,7 +50,9 @@ function RankedFlightsCard({ data, onQuickReply }) {
           <div
             key={f.flight_id}
             className={`p-3.5 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors ${
-              isBest
+              selectedFlightId === f.flight_id
+                ? 'bg-primary/10 border border-primary shadow-sm'
+                : isBest
                 ? 'bg-surface-container-high border border-primary/40 shadow-sm'
                 : 'bg-surface-container-low border border-surface-container-highest/50 hover:bg-surface-container-high'
             }`}
@@ -122,6 +124,13 @@ function RankedFlightsCard({ data, onQuickReply }) {
               <button type="button" aria-label={isWishlisted(f.flight_id, f.travel_date || fallbackDate) ? 'Remove from wishlist' : 'Add to wishlist'} onClick={() => toggleWishlist({ ...f, travel_date: f.travel_date || fallbackDate })} className={`p-2 rounded-full border transition-colors ${isWishlisted(f.flight_id, f.travel_date || fallbackDate) ? 'text-rose-300 bg-rose-500/15 border-rose-300/30' : 'text-on-surface-variant bg-surface-container border-surface-container-highest hover:text-rose-300'}`}><span className="material-symbols-outlined text-lg">favorite</span></button>
               <button
                 type="button"
+                onClick={() => onSelect?.(f)}
+                className="text-[11px] px-2.5 py-1 rounded bg-primary/15 hover:bg-primary/25 text-primary font-semibold transition-colors"
+              >
+                {selectedFlightId === f.flight_id ? 'Selected ✓' : 'Select Flight'}
+              </button>
+              <button
+                type="button"
                 onClick={() =>
                   onQuickReply?.(
                     `I'd like to book flight_id ${f.flight_id} (${getAirlineDisplay(f.airline)} ${
@@ -142,7 +151,7 @@ function RankedFlightsCard({ data, onQuickReply }) {
   );
 }
 
-function RankedHotelsCard({ data }) {
+function RankedHotelsCard({ data, onSelect, selectedHotelId }) {
   const hotels = (data?.hotels || []).slice(0, 3);
   if (!hotels.length) return null;
 
@@ -156,7 +165,7 @@ function RankedHotelsCard({ data }) {
         {hotels.map((hotel) => {
           const taxAmount = hotel.tax_is_estimated ? hotel.estimated_tax_inr : hotel.tax_inr;
           return (
-            <article key={hotel.hotel_id} className="rounded-xl border border-surface-container-highest/70 bg-surface-container-low p-3.5">
+            <article key={hotel.hotel_id} className={`rounded-xl border bg-surface-container-low p-3.5 ${selectedHotelId === hotel.hotel_id ? 'border-primary shadow-[0_0_0_1px_rgba(16,185,129,.25)]' : 'border-surface-container-highest/70'}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -179,11 +188,63 @@ function RankedHotelsCard({ data }) {
                 {hotel.distance_to_landmark_km != null && hotel.nearest_landmark && <span className="text-on-surface-variant">{hotel.distance_to_landmark_km} km from {hotel.nearest_landmark}</span>}
               </div>
               {hotel.explanation && <p className="mt-2 text-[10px] leading-relaxed text-on-surface-variant">{hotel.explanation}</p>}
+              <button type="button" onClick={() => onSelect?.(hotel)} className="mt-2 rounded-lg bg-primary/15 px-3 py-1.5 text-[10px] font-semibold text-primary hover:bg-primary/25">
+                {selectedHotelId === hotel.hotel_id ? 'Selected ✓' : 'Select Hotel'}
+              </button>
             </article>
           );
         })}
       </div>
-      <p className="mt-2 text-[9px] text-on-surface-variant/80">Hotel prices are indicative; no hotel reservation or payment was made.</p>
+      <p className="mt-2 text-[9px] text-on-surface-variant/80">Select Hotel or combine with a Flight for Complete Package checkout.</p>
+    </div>
+  );
+}
+
+function BookingCardsBundle({ cards, onQuickReply, bundleKey }) {
+  const navigate = useNavigate();
+  const flightCard = cards.find((card) => card.type === 'RANKED_FLIGHTS');
+  const hotelCard = cards.find((card) => card.type === 'HOTEL_RESULTS');
+  const flights = flightCard?.data?.top_3 || (flightCard?.data?.best_pick ? [flightCard.data.best_pick] : []);
+  const hotels = (hotelCard?.data?.hotels || []).slice(0, 3);
+  const [flight, setFlight] = useState(flights[0] || null);
+  const [hotel, setHotel] = useState(hotels[0] || null);
+  useEffect(() => {
+    if (!flight && flights.length) setFlight(flights[0]);
+    if (!hotel && hotels.length) setHotel(hotels[0]);
+  }, [flight, hotel, flights, hotels]);
+  const nights = Number(hotel?.nights || hotelCard?.data?.nights || 1);
+  const flightPrice = Number(flight?.price || 0) * Number(flight?.passengers || 1);
+  const hotelPrice = Number(hotel?.stay_total_inr || 0);
+  const hasCompletePair = Boolean(flight && hotel);
+  const defaultDate = flight?.travel_date || getBookableDateRange().defaultDate;
+
+  return (
+    <div className="space-y-3" data-bundle={bundleKey}>
+      {flightCard && <RankedFlightsCard data={flightCard.data} onQuickReply={onQuickReply} onSelect={setFlight} selectedFlightId={flight?.flight_id} />}
+      {hotelCard && <RankedHotelsCard data={hotelCard.data} onSelect={setHotel} selectedHotelId={hotel?.hotel_id} />}
+      {hasCompletePair && (
+        <section className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-surface-container to-secondary-container/20 p-4 shadow-lg">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.16em] text-primary">Complete Travel Package</p>
+              <h3 className="mt-1 font-headline text-base font-bold text-white">Flight + Hotel</h3>
+            </div>
+            <div className="rounded-xl border border-primary/20 bg-surface-container-low px-3 py-2 text-right">
+              <span className="block text-[9px] uppercase tracking-wider text-on-surface-variant">Combined total</span>
+              <strong className="font-mono text-lg text-primary">{formatINR(flightPrice + hotelPrice)}</strong>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+            <div className="rounded-lg bg-surface-container-low/80 p-3"><span className="text-on-surface-variant">Flight · </span><strong className="text-white">{getAirlineDisplay(flight.airline)} {flight.flight_code}</strong><p className="mt-1 text-on-surface-variant">{flight.source_city} → {flight.destination_city} · {formatINR(flightPrice)}</p></div>
+            <div className="rounded-lg bg-surface-container-low/80 p-3"><span className="text-on-surface-variant">Hotel · </span><strong className="text-white">{hotel.hotel_name}</strong><p className="mt-1 text-on-surface-variant">{nights} {nights === 1 ? 'night' : 'nights'} · stay {formatINR(hotelPrice)}</p></div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => navigate('/package-checkout', { state: { flight, hotel, travelDate: defaultDate, nights } })} className="rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-on-primary hover:bg-emerald-400">Book Complete Package</button>
+            <button type="button" onClick={() => navigate(`/book/${flight.flight_id}?travel_date=${encodeURIComponent(defaultDate)}&passengers=1`)} className="rounded-xl border border-surface-container-highest px-4 py-2.5 text-xs font-semibold text-on-surface hover:bg-surface-container-high">Book Flight Only</button>
+            <button type="button" onClick={() => navigate('/hotel-checkout', { state: { hotel, nights } })} className="rounded-xl border border-surface-container-highest px-4 py-2.5 text-xs font-semibold text-on-surface hover:bg-surface-container-high">Book Hotel Only</button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -702,13 +763,8 @@ export default function AgentPage() {
                         <ReactMarkdown components={CHAT_MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>
                       </div>
 
-                      {assistantCards.map((card, index) => (
-                        <div key={`${card.type}-${index}`}>
-                          {card.type === 'RANKED_FLIGHTS' && <RankedFlightsCard data={card.data} onQuickReply={sendMessage} />}
-                          {card.type === 'PAYMENT_ORDER' && <PaymentOrderCard data={card.data} />}
-                          {card.type === 'HOTEL_RESULTS' && <RankedHotelsCard data={card.data} />}
-                        </div>
-                      ))}
+                      {(assistantCards.some((card) => card.type === 'RANKED_FLIGHTS') || assistantCards.some((card) => card.type === 'HOTEL_RESULTS')) && <BookingCardsBundle cards={assistantCards} onQuickReply={sendMessage} bundleKey={m.message_id} />}
+                      {assistantCards.map((card, index) => card.type === 'PAYMENT_ORDER' ? <PaymentOrderCard key={`${card.type}-${index}`} data={card.data} /> : null)}
                     </div>
                   </div>
                 );
@@ -718,15 +774,8 @@ export default function AgentPage() {
             {/* Live UI cards received before final assistant_message */}
             {isStreaming && liveCards.length > 0 && (
               <div className="space-y-3 pl-11 max-w-2xl">
-                {liveCards.map((card, i) =>
-                  card.type === 'RANKED_FLIGHTS' ? (
-                    <RankedFlightsCard key={i} data={card.data} onQuickReply={sendMessage} />
-                  ) : card.type === 'PAYMENT_ORDER' ? (
-                    <PaymentOrderCard key={i} data={card.data} />
-                  ) : card.type === 'HOTEL_RESULTS' ? (
-                    <RankedHotelsCard key={i} data={card.data} />
-                  ) : null
-                )}
+                {(liveCards.some((card) => card.type === 'RANKED_FLIGHTS') || liveCards.some((card) => card.type === 'HOTEL_RESULTS')) && <BookingCardsBundle cards={liveCards} onQuickReply={sendMessage} bundleKey="live" />}
+                {liveCards.map((card, i) => card.type === 'PAYMENT_ORDER' ? <PaymentOrderCard key={i} data={card.data} /> : null)}
               </div>
             )}
 

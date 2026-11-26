@@ -30,6 +30,34 @@ def _get_razorpay_client():
     return _rz_client
 
 
+def verify_signature(razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str) -> None:
+    """Apply the same HMAC check used by the existing flight payment flow."""
+    if config.MOCK_RAZORPAY:
+        return
+    message = f"{razorpay_order_id}|{razorpay_payment_id}"
+    expected = hmac.new(config.RAZORPAY_KEY_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, razorpay_signature):
+        raise ValueError("Payment signature verification failed.")
+
+
+def create_external_order(amount_inr: float, receipt: str) -> dict[str, Any]:
+    """Create an order for a non-flight payment without touching flight payments."""
+    amount = round(float(amount_inr), 2)
+    if amount <= 0:
+        raise ValueError("Payment amount must be positive.")
+    if config.MOCK_RAZORPAY:
+        order_id = f"mock_ord_{uuid.uuid4().hex[:16]}"
+    else:
+        order = _get_razorpay_client().order.create(data={
+            "amount": int(round(amount * 100)), "currency": "INR", "receipt": receipt[:40],
+        })
+        order_id = order["id"]
+    return {
+        "gateway_order_id": order_id, "amount": amount, "currency": "INR",
+        "status": "CREATED", "razorpay_key_id": config.RAZORPAY_KEY_ID or None,
+    }
+
+
 # ── Public API ───────────────────────────────────────────────────────────
 
 def create_order(booking_id: int) -> dict[str, Any]:
@@ -120,28 +148,20 @@ def verify_payment(
         return _build_verify_response(payment["payment_id"])
 
     # ── Signature verification ───────────────────────────────────────
-    if config.MOCK_RAZORPAY:
-        # In mock mode accept any signature
-        pass
-    else:
-        message = f"{razorpay_order_id}|{razorpay_payment_id}"
-        expected = hmac.new(
-            config.RAZORPAY_KEY_SECRET.encode(),
-            message.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(expected, razorpay_signature):
-            # Mark payment failed
-            conn = sqlite_mod.get_connection()
-            try:
-                conn.execute(
-                    "UPDATE payments SET status = 'FAILED' WHERE payment_id = ?;",
-                    (payment["payment_id"],),
-                )
-                conn.commit()
-            finally:
-                conn.close()
-            raise ValueError("Payment signature verification failed.")
+    try:
+        verify_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+    except ValueError:
+        # Preserve the flight flow's failed-payment bookkeeping.
+        conn = sqlite_mod.get_connection()
+        try:
+            conn.execute(
+                "UPDATE payments SET status = 'FAILED' WHERE payment_id = ?;",
+                (payment["payment_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        raise
 
     # ── Mark PAID + CONFIRMED ────────────────────────────────────────
     conn = sqlite_mod.get_connection()

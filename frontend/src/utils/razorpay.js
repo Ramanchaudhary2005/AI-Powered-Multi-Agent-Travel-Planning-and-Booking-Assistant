@@ -31,11 +31,22 @@ export async function processBookingPayment({
 }) {
   const order = existingOrder || (await createPaymentOrder(bookingId));
 
+  return processPreparedOrder({
+    order,
+    customer,
+    description,
+    verify: verifyPayment,
+  });
+}
+
+/** Pay an already-created order and let feature-specific endpoints verify it. */
+export async function processPreparedOrder({ order, customer = {}, description, verify }) {
+
   const isMock =
     !order.razorpay_key_id || String(order.gateway_order_id).startsWith('mock_ord_');
 
   if (isMock) {
-    const verified = await verifyPayment({
+    const verified = await verify({
       razorpay_order_id: order.gateway_order_id,
       razorpay_payment_id: `mock_pay_${Date.now()}`,
       razorpay_signature: 'mock_sig',
@@ -67,7 +78,7 @@ export async function processBookingPayment({
       },
       handler: async (response) => {
         try {
-          const verified = await verifyPayment({
+          const verified = await verify({
             razorpay_order_id: response.razorpay_order_id,
             razorpay_payment_id: response.razorpay_payment_id,
             razorpay_signature: response.razorpay_signature,

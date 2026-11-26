@@ -66,6 +66,41 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS idx_bookings_flight_date_status
     ON bookings (flight_id, travel_date, status);
 
+-- 3a. Hotel bookings. A package is represented by matching package_ref values
+-- on a flight booking and its hotel booking; its single Razorpay order lives here.
+CREATE TABLE IF NOT EXISTS hotel_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_ref TEXT NOT NULL UNIQUE,
+    user_id INTEGER REFERENCES users(user_id),
+    package_ref TEXT,
+    linked_flight_pnr TEXT,
+    hotel_id INTEGER NOT NULL,
+    hotel_name TEXT NOT NULL,
+    city TEXT NOT NULL,
+    location TEXT,
+    nearest_landmark TEXT,
+    star_rating REAL,
+    check_in_date TEXT NOT NULL,
+    check_out_date TEXT NOT NULL,
+    nights INTEGER NOT NULL,
+    guests INTEGER NOT NULL,
+    guest_name TEXT NOT NULL,
+    guest_email TEXT NOT NULL,
+    price_per_night_inr REAL NOT NULL,
+    tax_inr REAL NOT NULL,
+    tax_is_estimated INTEGER NOT NULL DEFAULT 0,
+    total_amount_inr REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING_PAYMENT'
+        CHECK (status IN ('PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED')),
+    razorpay_order_id TEXT UNIQUE,
+    razorpay_payment_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_hotel_bookings_user_created
+    ON hotel_bookings(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_hotel_bookings_package
+    ON hotel_bookings(package_ref);
+
 -- 4. passengers
 CREATE TABLE IF NOT EXISTS passengers (
     passenger_id  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +158,9 @@ def init_db() -> None:
     conn = get_connection()
     try:
         conn.executescript(_SCHEMA_SQL)
+        booking_columns = {row[1] for row in conn.execute("PRAGMA table_info(bookings);")}
+        if "package_ref" not in booking_columns:
+            conn.execute("ALTER TABLE bookings ADD COLUMN package_ref TEXT;")
         user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users);")}
         additions = {
             "google_sub": "TEXT",

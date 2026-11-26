@@ -10,8 +10,9 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginError, setLoginError] = useState('');
   const menuRef = useRef(null);
-  const isManual = pathname === '/' || ['/results', '/book', '/pay', '/ticket'].some((p) => pathname.startsWith(p));
+  const isManual = pathname === '/' || ['/results', '/book/', '/pay/', '/ticket/'].some((p) => pathname.startsWith(p));
   const isAgent = pathname.startsWith('/agent');
+  const isTripAnalysis = pathname.startsWith('/trip-analysis');
   const shortName = user?.first_middle_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Account';
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export default function Navbar() {
             <nav className="hidden md:flex items-center gap-2">
               <NavLink to="/" className={`px-3.5 py-1.5 text-sm rounded-lg ${isManual ? 'bg-surface-container-high text-on-surface font-semibold border border-primary/25' : 'text-on-surface-variant hover:text-on-surface'}`}>Manual Search</NavLink>
               <NavLink to="/agent" className={`px-3.5 py-1.5 text-sm rounded-lg ${isAgent ? 'bg-secondary-container text-white font-semibold' : 'text-on-surface-variant hover:text-on-surface'}`}>Talk with Agent <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container">AI</span></NavLink>
+              <NavLink to="/trip-analysis" className={`px-3.5 py-1.5 text-sm rounded-lg ${isTripAnalysis ? 'bg-primary/10 text-primary font-semibold border border-primary/20' : 'text-on-surface-variant hover:text-on-surface'}`}>Trips Analysis</NavLink>
             </nav>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -57,6 +59,7 @@ export default function Navbar() {
                   <Link role="menuitem" onClick={() => setMenuOpen(false)} to="/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface hover:bg-surface-container-high"><span className="material-symbols-outlined text-primary text-lg">account_circle</span>My Profile</Link>
                   <Link role="menuitem" onClick={() => setMenuOpen(false)} to="/wishlist" className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface hover:bg-surface-container-high"><span className="flex items-center gap-3"><span className="material-symbols-outlined text-rose-400 text-lg">favorite</span>Wishlist</span><span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 text-[11px] font-bold">{wishlist.length}</span></Link>
                   <Link role="menuitem" onClick={() => setMenuOpen(false)} to="/bookings" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface hover:bg-surface-container-high"><span className="material-symbols-outlined text-secondary-fixed text-lg">confirmation_number</span>My Bookings</Link>
+                  <Link role="menuitem" onClick={() => setMenuOpen(false)} to="/trip-analysis" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface hover:bg-surface-container-high"><span className="material-symbols-outlined text-emerald-300 text-lg">monitoring</span>Trips Analysis</Link>
                   <button type="button" role="menuitem" onClick={handleLogout} className="w-full mt-1 border-t border-surface-container-highest flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-rose-300 hover:bg-rose-500/10"><span className="material-symbols-outlined text-lg">logout</span>Logout</button>
                 </div>}
               </div>

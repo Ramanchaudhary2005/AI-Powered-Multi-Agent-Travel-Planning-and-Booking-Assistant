@@ -10,6 +10,7 @@ import ResultsPage from './pages/ResultsPage';
 import TicketPage from './pages/TicketPage';
 import ProfilePage from './pages/ProfilePage';
 import WishlistPage from './pages/WishlistPage';
+import TripAnalysisPage from './pages/TripAnalysisPage';
 
 function AppShell() {
   const { pathname } = useLocation();
@@ -31,6 +32,7 @@ function AppShell() {
           <Route path="/bookings" element={<MyBookingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/wishlist" element={<WishlistPage />} />
+          <Route path="/trip-analysis" element={<TripAnalysisPage />} />
         </Routes>
       </main>
       {!isAgentRoute && <Footer />}

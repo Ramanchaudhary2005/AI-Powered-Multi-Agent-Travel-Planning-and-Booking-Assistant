@@ -67,6 +67,11 @@ export function getMyBookings() {
   return request('/api/bookings');
 }
 
+export function getMyTripsAnalytics(scope = 'confirmed') {
+  const qs = new URLSearchParams({ scope }).toString();
+  return request(`/api/analytics/my-trips?${qs}`);
+}
+
 export function googleAuth(credential) {
   return request('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
 }

@@ -45,14 +45,14 @@ export function getFlightById(flightId, travelDate) {
   return request(`/api/flights/${flightId}?${qs}`);
 }
 
-export function searchHotels(params = {}) {
+export function searchHotels(params = {}, { signal } = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
   });
   const queryString = query.toString();
   const suffix = queryString ? `?${queryString}` : '';
-  return request(`/api/hotels/search${suffix}`);
+  return request(`/api/hotels/search${suffix}`, { signal });
 }
 
 export function getHotelDetails(hotelId) {
@@ -140,6 +140,12 @@ export function verifyHotelBookingPayment(bookingRef, payload) { return request(
 export function getHotelBooking(bookingRef) { return request(`/api/hotel-bookings/${encodeURIComponent(bookingRef)}`); }
 export function getMyHotelBookings() { return request('/api/hotel-bookings/my'); }
 export function getHotelVoucherUrl(bookingRef) { return `${API_BASE}/api/hotel-bookings/${encodeURIComponent(bookingRef)}/voucher`; }
+export function getMarketTrends(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key,value]) => { if (value !== undefined && value !== null && value !== '') query.set(key,String(value)); });
+  return request(`/api/insights/market-trends?${query.toString()}`);
+}
+export function predictFare(payload) { return request('/api/insights/predict-fare', { method: 'POST', body: JSON.stringify(payload) }); }
 export function createPackageBooking(payload) { return request('/api/packages/book', { method: 'POST', body: JSON.stringify(payload) }); }
 export function verifyPackagePayment(packageRef, payload) { return request(`/api/packages/${encodeURIComponent(packageRef)}/verify-payment`, { method: 'POST', body: JSON.stringify(payload) }); }
 export function getPackage(packageRef) { return request(`/api/packages/${encodeURIComponent(packageRef)}`); }

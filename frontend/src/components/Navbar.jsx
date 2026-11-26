@@ -13,6 +13,7 @@ export default function Navbar() {
   const isManual = pathname === '/' || ['/results', '/book/', '/pay/', '/ticket/'].some((p) => pathname.startsWith(p));
   const isAgent = pathname.startsWith('/agent');
   const isTripAnalysis = pathname.startsWith('/trip-analysis');
+  const isMarketInsights = pathname.startsWith('/market-insights');
   const shortName = user?.first_middle_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Account';
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function Navbar() {
               <NavLink to="/" className={`px-3.5 py-1.5 text-sm rounded-lg ${isManual ? 'bg-surface-container-high text-on-surface font-semibold border border-primary/25' : 'text-on-surface-variant hover:text-on-surface'}`}>Manual Search</NavLink>
               <NavLink to="/agent" className={`px-3.5 py-1.5 text-sm rounded-lg ${isAgent ? 'bg-secondary-container text-white font-semibold' : 'text-on-surface-variant hover:text-on-surface'}`}>Talk with Agent <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container">AI</span></NavLink>
               <NavLink to="/trip-analysis" className={`px-3.5 py-1.5 text-sm rounded-lg ${isTripAnalysis ? 'bg-primary/10 text-primary font-semibold border border-primary/20' : 'text-on-surface-variant hover:text-on-surface'}`}>Trips Analysis</NavLink>
+              <NavLink to="/market-insights" className={`px-3.5 py-1.5 text-sm rounded-lg ${isMarketInsights ? 'bg-indigo-400/10 text-indigo-200 font-semibold border border-indigo-300/20' : 'text-on-surface-variant hover:text-on-surface'}`}>Fare Insights</NavLink>
             </nav>
           </div>
           <div className="flex items-center gap-3 shrink-0">

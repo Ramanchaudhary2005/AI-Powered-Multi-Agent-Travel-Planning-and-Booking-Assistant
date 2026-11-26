@@ -130,6 +130,7 @@ def _build_system_prompt(session: dict, user_context: dict | None = None) -> str
         "1. Understand the user's travel needs (cities, dates, class, number of passengers). If they state or change a budget in any form, immediately call set_budget_cap before searching, ranking, or booking.\n"
         "2. Use search_flights to find available options.\n"
         "3. Use rank_flights to compare and recommend the best options.\n"
+        "3a. When asked whether to book now or wait, call predict_fare_timing with the selected flight details and explain its signal, fair fare, confidence, and reason. Treat it as an estimate, not a guarantee.\n"
         "4. For hotel requests, call search_hotels for filtered inventory or rank_hotels for recommendations; include the requested number of nights and compare stay_total_inr.\n"
         "5. For a combined flight and hotel request under one total budget B, follow COMBINED BUDGET RULES below exactly.\n"
         "6. If no flights match, use find_alternatives to broaden the search.\n"

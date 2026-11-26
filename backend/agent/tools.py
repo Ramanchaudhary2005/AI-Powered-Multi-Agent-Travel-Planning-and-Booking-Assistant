@@ -1,5 +1,5 @@
 """
-Agent tools — 8 Gemini function-declarations + dispatcher.
+Agent tools — 9 Gemini function-declarations + dispatcher.
 
 Each tool wraps the corresponding ``backend/services/`` function.
 ``create_booking`` and ``create_payment_order`` are guarded by budget_guard.
@@ -19,6 +19,7 @@ from backend.services import (
     booking_service,
     flight_service,
     hotel_service,
+    ml_service,
     payment_service,
     ranking_service,
 )
@@ -225,6 +226,25 @@ _rank_hotels = types.FunctionDeclaration(
     ),
 )
 
+_predict_fare_timing = types.FunctionDeclaration(
+    name="predict_fare_timing",
+    description=("Use the trained fare model to estimate a flight's fair fare and advise whether to book now or wait."),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "source_city": types.Schema(type=types.Type.STRING, enum=CITIES),
+            "destination_city": types.Schema(type=types.Type.STRING, enum=CITIES),
+            "airline": types.Schema(type=types.Type.STRING),
+            "flight_class": types.Schema(type=types.Type.STRING, enum=CLASSES),
+            "days_left": types.Schema(type=types.Type.INTEGER, description="Days until departure, 1 to 49"),
+            "current_price": types.Schema(type=types.Type.NUMBER, description="Current fare per passenger in INR"),
+            "stops_count": types.Schema(type=types.Type.INTEGER, description="Number of stops, usually 0, 1, or 2"),
+            "duration_hrs": types.Schema(type=types.Type.NUMBER, description="Flight duration in hours"),
+        },
+        required=["source_city", "destination_city", "airline", "flight_class", "days_left", "current_price"],
+    ),
+)
+
 GEMINI_TOOL = types.Tool(
     function_declarations=[
         _search_flights,
@@ -235,6 +255,7 @@ GEMINI_TOOL = types.Tool(
         _set_budget_cap,
         _search_hotels,
         _rank_hotels,
+        _predict_fare_timing,
     ]
 )
 
@@ -316,6 +337,14 @@ def execute(
         )
         context["last_hotel_results"] = result["hotels"]
         return result
+
+    if name == "predict_fare_timing":
+        return ml_service.predict_fare_timing(
+            source_city=args["source_city"], destination_city=args["destination_city"],
+            airline=args["airline"], flight_class=args.get("flight_class", "Economy"),
+            days_left=int(args["days_left"]), current_price=float(args["current_price"]),
+            stops_count=int(args.get("stops_count", 0)), duration_hrs=float(args.get("duration_hrs", 2.2)),
+        )
 
     if name == "search_flights":
         results = flight_service.search_flights(

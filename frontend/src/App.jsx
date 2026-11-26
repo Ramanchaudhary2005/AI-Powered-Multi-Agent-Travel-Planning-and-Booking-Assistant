@@ -12,6 +12,8 @@ import ProfilePage from './pages/ProfilePage';
 import WishlistPage from './pages/WishlistPage';
 import TripAnalysisPage from './pages/TripAnalysisPage';
 import PackageCheckoutPage from './pages/PackageCheckoutPage';
+import MarketInsightsPage from './pages/MarketInsightsPage';
+import HotelResultsPage from './pages/HotelResultsPage';
 
 function AppShell() {
   const { pathname } = useLocation();
@@ -24,6 +26,7 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/results" element={<ResultsPage />} />
+          <Route path="/hotels" element={<HotelResultsPage />} />
           <Route path="/book/:flightId" element={<BookPage />} />
           <Route path="/pay/:pnr" element={<PayPage />} />
           <Route path="/ticket/:pnr" element={<TicketPage />} />
@@ -34,6 +37,7 @@ function AppShell() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/wishlist" element={<WishlistPage />} />
           <Route path="/trip-analysis" element={<TripAnalysisPage />} />
+          <Route path="/market-insights" element={<MarketInsightsPage />} />
           <Route path="/package-checkout" element={<PackageCheckoutPage />} />
           <Route path="/hotel-checkout" element={<PackageCheckoutPage hotelOnly />} />
         </Routes>

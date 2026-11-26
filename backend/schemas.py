@@ -4,6 +4,8 @@ Pydantic v2 request / response models for the Flight Booking API.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -60,6 +62,7 @@ class FlightOut(BaseModel):
     price: int
     seats_available: int
     live_seats_left: int
+    price_signal: dict[str, Any] | None = None
 
 
 class FlightSearchResponse(BaseModel):

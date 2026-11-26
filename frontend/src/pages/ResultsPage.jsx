@@ -556,6 +556,7 @@ export default function ResultsPage() {
                         />
                         {getAirlineDisplay(flight.airline)} •{' '}
                         <span className="font-mono">{flight.flight_code}</span>
+                        {flight.price_signal && <span title={flight.price_signal.reason} className={`ml-2 inline-flex rounded-full border px-2 py-0.5 align-middle text-[9px] font-bold ${flight.price_signal.signal === 'BOOK_NOW' ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-300' : 'border-amber-300/25 bg-amber-400/10 text-amber-200'}`}>{flight.price_signal.signal === 'BOOK_NOW' ? 'Book Now' : 'Wait'} · {flight.price_signal.confidence_pct}%</span>}
                       </span>
                       <span className="text-xs text-on-surface-variant hidden sm:inline">
                         {flight.travel_class}

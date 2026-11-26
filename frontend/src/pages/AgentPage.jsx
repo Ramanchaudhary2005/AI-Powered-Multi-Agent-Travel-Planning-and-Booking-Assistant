@@ -86,6 +86,7 @@ function RankedFlightsCard({ data, onQuickReply, onSelect, selectedFlightId }) {
                       {f.badge}
                     </span>
                   )}
+                  {f.price_signal && <span title={f.price_signal.reason} className={`rounded-full border px-2 py-0.5 text-[9px] font-bold ${f.price_signal.signal === 'BOOK_NOW' ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-300' : 'border-amber-300/25 bg-amber-400/10 text-amber-200'}`}>{f.price_signal.signal === 'BOOK_NOW' ? 'Book Now' : 'Wait'}</span>}
                   <span className="text-xs font-semibold text-on-surface">
                     {getAirlineDisplay(f.airline)} •{' '}
                     <span className="font-mono">{f.flight_code}</span>

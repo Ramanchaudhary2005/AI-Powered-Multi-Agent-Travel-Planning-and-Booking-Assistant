@@ -152,6 +152,9 @@ def search_flights(
         con.close()
 
     flights = _attach_live_seats(flights, travel_date, passengers)
+    # Advisory-only model enrichment. Missing/corrupt artifacts never block search.
+    from backend.services.ml_service import attach_price_signals
+    flights = attach_price_signals(flights)
     return flights[:50]
 
 

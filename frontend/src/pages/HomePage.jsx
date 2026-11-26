@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createAgentSession, getFlightMeta, searchFlights, searchHotels } from '../api/client';
-import HotelResultCard from '../components/HotelResultCard';
+import { createAgentSession, getFlightMeta, searchFlights } from '../api/client';
 import {
   CITY_INFO,
   formatDisplayDate,
@@ -50,9 +49,6 @@ export default function HomePage() {
   const [hotelStars, setHotelStars] = useState('');
   const [hotelMinRating, setHotelMinRating] = useState('');
   const [hotelSort, setHotelSort] = useState('recommended');
-  const [hotelResults, setHotelResults] = useState(null);
-  const [hotelLoading, setHotelLoading] = useState(false);
-  const [hotelError, setHotelError] = useState('');
 
   const [agentPrompt, setAgentPrompt] = useState('');
   const [agentLoading, setAgentLoading] = useState(false);
@@ -125,27 +121,13 @@ export default function HomePage() {
     navigate(`/results?${params.toString()}`);
   };
 
-  const handleHotelSearch = async (e) => {
+  const handleHotelSearch = (e) => {
     e.preventDefault();
-    setHotelError('');
-    setHotelLoading(true);
-    try {
-      const results = await searchHotels({
-        city: hotelCity,
-        nights: hotelNights,
-        max_price: hotelMaxPrice || undefined,
-        star_rating: hotelStars || undefined,
-        min_rating: hotelMinRating || undefined,
-        sort_by: hotelSort,
-        limit: 30,
-      });
-      setHotelResults(results);
-    } catch (err) {
-      setHotelError(err.message || 'Could not search hotels.');
-      setHotelResults(null);
-    } finally {
-      setHotelLoading(false);
-    }
+    const params = new URLSearchParams({ city: hotelCity, nights: String(hotelNights), sort_by: hotelSort });
+    if (hotelMaxPrice) params.set('max_price', hotelMaxPrice);
+    if (hotelStars) params.set('star_rating', hotelStars);
+    if (hotelMinRating) params.set('min_rating', hotelMinRating);
+    navigate(`/hotels?${params.toString()}`);
   };
 
   const handleSearchSubmit = (e) => {
@@ -499,33 +481,16 @@ export default function HomePage() {
                   </select>
                 </label>
               </div>
-              {hotelError && <p className="rounded-lg border border-error/40 bg-error-container/30 px-3 py-2 text-xs text-error">{hotelError}</p>}
               <div className="flex flex-col gap-3 border-t border-surface-container-highest pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-on-surface-variant">Indicative inventory · tax shown as listed or estimated</p>
-                <button type="submit" disabled={hotelLoading} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-7 py-3 font-headline text-sm font-bold text-on-primary shadow-lg transition hover:bg-emerald-400 disabled:opacity-60">
-                  <span className="material-symbols-outlined text-lg">{hotelLoading ? 'progress_activity' : 'hotel'}</span>
-                  {hotelLoading ? 'Searching stays…' : 'Search Hotels'}
+                <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-7 py-3 font-headline text-sm font-bold text-on-primary shadow-lg transition hover:bg-emerald-400 disabled:opacity-60">
+                  <span className="material-symbols-outlined text-lg">hotel</span>
+                  Search Hotels
                 </button>
               </div>
             </div>
           )}
         </form>
-
-        {searchMode === 'hotels' && hotelResults && (
-          <section aria-live="polite" className="space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div><h2 className="font-headline text-xl font-bold text-white">Stays in {hotelCity}</h2><p className="mt-1 text-xs text-on-surface-variant">{hotelResults.total} matches · {hotelNights} {hotelNights === 1 ? 'night' : 'nights'}</p></div>
-              {hotelResults.total > 0 && <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">Value-ranked · taxes disclosed</span>}
-            </div>
-            {hotelResults.hotels.length ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {hotelResults.hotels.map((hotel) => <HotelResultCard key={hotel.hotel_id} hotel={hotel} onBook={(item) => navigate('/hotel-checkout', { state: { hotel: item, nights: hotelNights } })} onPlan={(item) => handleOpenAgent(`Help me plan a trip with ${item.hotel_name} in ${item.city} for ${hotelNights} ${hotelNights === 1 ? 'night' : 'nights'}. The indicative stay total is ₹${Math.round(item.stay_total_inr).toLocaleString('en-IN')}; compare it with flight options and my overall budget. Do not place a hotel booking.`)} />)}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">No stays match those filters. Try raising the nightly budget or lowering the rating filter.</div>
-            )}
-          </section>
-        )}
 
         {/* Glowing AI Agent Spotlight Card */}
         <div className="w-full rounded-2xl p-6 sm:p-8 bg-surface-container-high border border-secondary/30 relative overflow-hidden shadow-[0_0_40px_rgba(99,102,241,0.12)]">

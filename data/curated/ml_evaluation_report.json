@@ -1,0 +1,191 @@
+{
+  "generated_at": "2026-11-26T12:36:08.008552+00:00",
+  "dataset": {
+    "flight_rows": 300153,
+    "training_rows": 240122,
+    "test_rows": 60031,
+    "split_strategy": "Seeded random 80/20 row split; random_state=42; route-class aggregates cross-fitted over 5 training folds."
+  },
+  "fare_prediction": {
+    "target": "price (INR)",
+    "selected_model": "gradient_boosted_trees",
+    "model_class": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingRegressor",
+    "metrics": {
+      "naive_route_class_median": {
+        "mae_inr": 4458.64,
+        "rmse_inr": 7597.04,
+        "r2": 0.88804
+      },
+      "ridge_onehot": {
+        "mae_inr": 4260.4,
+        "rmse_inr": 6484.72,
+        "r2": 0.91842
+      },
+      "gradient_boosted_trees": {
+        "mae_inr": 2251.45,
+        "rmse_inr": 3870.5,
+        "r2": 0.97094
+      }
+    },
+    "model_selection": {
+      "strategy": "independent 20% validation split from training partition, random_state=43; selection does not use test partition",
+      "validation_mae_inr": {
+        "ridge_onehot": 4253.8,
+        "gradient_boosted_trees": 2239.89
+      }
+    },
+    "book_now_wait_directional_accuracy_pct": 60.71,
+    "directional_pair_count": 4851
+  },
+  "recommender_evaluation": {
+    "flight": {
+      "hybrid": {
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.90667
+      },
+      "price_only": {
+        "ndcg_at_5": 0.92805,
+        "precision_at_5": 0.89333
+      },
+      "query_count": 30
+    },
+    "hotel": {
+      "hybrid": {
+        "ndcg_at_5": 0.67309,
+        "precision_at_5": 0.88333
+      },
+      "price_only": {
+        "ndcg_at_5": 0.8324,
+        "precision_at_5": 1.0
+      },
+      "rating_only": {
+        "ndcg_at_5": 0.5913,
+        "precision_at_5": 0.875
+      },
+      "query_count": 24,
+      "cities": [
+        "Bangalore",
+        "Chennai",
+        "Delhi",
+        "Hyderabad",
+        "Kolkata",
+        "Mumbai"
+      ]
+    },
+    "ndcg_at_5_lift_vs_price_only": {
+      "flight": 0.07195,
+      "hotel": -0.15931
+    }
+  },
+  "data_quality": {
+    "flights": {
+      "generated_at": "2026-11-26T08:45:08+00:00",
+      "total_raw_rows": 300153,
+      "total_curated_rows": 300153,
+      "duplicates_removed": 0,
+      "duplicate_rate_pct": 0.0,
+      "completeness_pct": {
+        "overall_pct": 100.0,
+        "per_column_pct": {
+          "flight_id": 100.0,
+          "airline": 100.0,
+          "flight_code": 100.0,
+          "source_city": 100.0,
+          "departure_time": 100.0,
+          "stops": 100.0,
+          "arrival_time": 100.0,
+          "destination_city": 100.0,
+          "class": 100.0,
+          "duration_hrs": 100.0,
+          "days_left": 100.0,
+          "price": 100.0,
+          "stops_count": 100.0,
+          "seats_available": 100.0,
+          "dep_clock": 100.0,
+          "arr_clock": 100.0
+        }
+      },
+      "validity_pass_rate_pct": 100.0,
+      "quarantined_rows": 0,
+      "luxury_outliers_flagged": 0,
+      "cities_covered": [
+        "Bangalore",
+        "Chennai",
+        "Delhi",
+        "Hyderabad",
+        "Kolkata",
+        "Mumbai"
+      ],
+      "routes_or_properties_count": 30,
+      "price_summary": {
+        "min": 1105.0,
+        "median": 7425.0,
+        "mean": 20889.66,
+        "max": 123071.0
+      },
+      "price_summary_inr": {
+        "min": 1105.0,
+        "median": 7425.0,
+        "mean": 20889.66,
+        "max": 123071.0
+      }
+    },
+    "hotels": {
+      "generated_at": "2026-11-26T08:45:08+00:00",
+      "total_raw_rows": 580,
+      "total_curated_rows": 580,
+      "duplicates_removed": 0,
+      "duplicate_rate_pct": 0.0,
+      "completeness_pct": {
+        "overall_pct": 86.45,
+        "per_column_pct": {
+          "hotel_id": 100.0,
+          "city": 100.0,
+          "hotel_name": 100.0,
+          "rating": 99.83,
+          "rating_description": 99.83,
+          "reviews": 100.0,
+          "star_rating": 83.62,
+          "location": 100.0,
+          "nearest_landmark": 50.0,
+          "distance_to_landmark_km": 50.0,
+          "price_inr": 100.0,
+          "tax_inr": 69.66,
+          "estimated_tax_inr": 30.34,
+          "tax_is_estimated": 100.0,
+          "total_price_per_night_inr": 100.0,
+          "is_luxury_outlier": 100.0
+        }
+      },
+      "validity_pass_rate_pct": 100.0,
+      "quarantined_rows": 0,
+      "luxury_outliers_flagged": 1,
+      "cities_covered": [
+        "Bangalore",
+        "Chennai",
+        "Delhi",
+        "Hyderabad",
+        "Kolkata",
+        "Mumbai"
+      ],
+      "routes_or_properties_count": 580,
+      "price_summary": {
+        "min": 404.0,
+        "median": 3812.0,
+        "mean": 5155.37,
+        "max": 125000.0
+      },
+      "price_summary_inr": {
+        "min": 404.0,
+        "median": 3812.0,
+        "mean": 5155.37,
+        "max": 125000.0
+      },
+      "tax_is_estimated_count": 176
+    }
+  },
+  "artifacts": {
+    "fare_predictor": "data\\curated\\fare_predictor.joblib",
+    "evaluation_report": "data\\curated\\ml_evaluation_report.json"
+  }
+}

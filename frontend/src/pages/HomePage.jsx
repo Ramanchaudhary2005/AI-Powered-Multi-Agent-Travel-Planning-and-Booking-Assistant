@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createAgentSession, getFlightMeta, searchFlights } from '../api/client';
+import { createAgentSession, getFlightMeta, searchFlights, searchHotels } from '../api/client';
+import HotelResultCard from '../components/HotelResultCard';
 import {
   CITY_INFO,
   formatDisplayDate,
@@ -42,6 +43,16 @@ export default function HomePage() {
   const [passengers, setPassengers] = useState(1);
   const [nonStopOnly, setNonStopOnly] = useState(false);
   const [formError, setFormError] = useState('');
+  const [searchMode, setSearchMode] = useState('flights');
+  const [hotelCity, setHotelCity] = useState('Delhi');
+  const [hotelNights, setHotelNights] = useState(1);
+  const [hotelMaxPrice, setHotelMaxPrice] = useState('');
+  const [hotelStars, setHotelStars] = useState('');
+  const [hotelMinRating, setHotelMinRating] = useState('');
+  const [hotelSort, setHotelSort] = useState('recommended');
+  const [hotelResults, setHotelResults] = useState(null);
+  const [hotelLoading, setHotelLoading] = useState(false);
+  const [hotelError, setHotelError] = useState('');
 
   const [agentPrompt, setAgentPrompt] = useState('');
   const [agentLoading, setAgentLoading] = useState(false);
@@ -114,6 +125,34 @@ export default function HomePage() {
     navigate(`/results?${params.toString()}`);
   };
 
+  const handleHotelSearch = async (e) => {
+    e.preventDefault();
+    setHotelError('');
+    setHotelLoading(true);
+    try {
+      const results = await searchHotels({
+        city: hotelCity,
+        nights: hotelNights,
+        max_price: hotelMaxPrice || undefined,
+        star_rating: hotelStars || undefined,
+        min_rating: hotelMinRating || undefined,
+        sort_by: hotelSort,
+        limit: 30,
+      });
+      setHotelResults(results);
+    } catch (err) {
+      setHotelError(err.message || 'Could not search hotels.');
+      setHotelResults(null);
+    } finally {
+      setHotelLoading(false);
+    }
+  };
+
+  const handleSearchSubmit = (e) => {
+    if (searchMode === 'hotels') handleHotelSearch(e);
+    else handleManualSearch(e);
+  };
+
   const handleOpenAgent = async (promptText = '') => {
     if (agentLoading) return;
     setAgentLoading(true);
@@ -181,10 +220,32 @@ export default function HomePage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 w-full pb-14 flex flex-col gap-6">
         {/* Manual Flight Search Card */}
         <form
-          onSubmit={handleManualSearch}
+          onSubmit={handleSearchSubmit}
           className="w-full bg-surface-container-low border border-surface-container-highest rounded-2xl p-5 sm:p-7 shadow-2xl relative overflow-hidden"
         >
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-80" />
+
+          <div className="mb-6 flex justify-center">
+            <div className="inline-flex rounded-xl border border-surface-container-highest bg-surface-container-lowest p-1 shadow-inner" role="group" aria-label="Search type">
+              {[
+                { id: 'flights', label: '✈️ Flights' },
+                { id: 'hotels', label: '🏨 Hotels' },
+              ].map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => setSearchMode(mode.id)}
+                  aria-pressed={searchMode === mode.id}
+                  className={`rounded-lg px-5 py-2 text-xs font-bold transition-all sm:text-sm ${searchMode === mode.id ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface-variant hover:bg-surface-container-high hover:text-white'}`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {searchMode === 'flights' ? (
+          <>
 
           <div className="flex flex-wrap items-center justify-between gap-4 pb-5">
             <div className="flex items-center gap-2">
@@ -397,7 +458,74 @@ export default function HomePage() {
               <span>Search Flights</span>
             </button>
           </div>
+          </>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <h2 className="font-headline text-xl font-bold text-white">Find your stay</h2>
+                <p className="mt-1 text-xs text-on-surface-variant">Compare curated hotels with transparent nightly tax and full-stay pricing.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="rounded-xl border border-surface-container-highest/60 bg-surface-container p-3.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">City</span>
+                  <select value={hotelCity} onChange={(e) => setHotelCity(e.target.value)} className="mt-2 w-full bg-transparent text-base font-bold text-white outline-none">
+                    {['Delhi', 'Mumbai', 'Bangalore', 'Kolkata', 'Hyderabad', 'Chennai'].map((city) => <option key={city} value={city} className="bg-surface-container text-white">{city}</option>)}
+                  </select>
+                </label>
+                <label className="rounded-xl border border-surface-container-highest/60 bg-surface-container p-3.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Nights</span>
+                  <input type="number" min="1" max="14" value={hotelNights} onChange={(e) => setHotelNights(Math.min(14, Math.max(1, Number(e.target.value) || 1)))} className="mt-2 w-full bg-transparent text-base font-bold text-white outline-none" />
+                </label>
+                <label className="rounded-xl border border-surface-container-highest/60 bg-surface-container p-3.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Max price / night</span>
+                  <div className="mt-1 flex items-center gap-2"><span className="text-primary">₹</span><input type="number" min="1" value={hotelMaxPrice} onChange={(e) => setHotelMaxPrice(e.target.value)} placeholder="Any budget" className="w-full bg-transparent text-base font-bold text-white outline-none placeholder:text-on-surface-variant/60" /></div>
+                </label>
+                <label className="rounded-xl border border-surface-container-highest/60 bg-surface-container p-3.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Star rating</span>
+                  <select value={hotelStars} onChange={(e) => setHotelStars(e.target.value)} className="mt-2 w-full bg-transparent text-base font-bold text-white outline-none">
+                    <option value="" className="bg-surface-container">Any</option><option value="5" className="bg-surface-container">5★</option><option value="4" className="bg-surface-container">4★</option><option value="3" className="bg-surface-container">3★</option>
+                  </select>
+                </label>
+                <label className="rounded-xl border border-surface-container-highest/60 bg-surface-container p-3.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Minimum guest rating</span>
+                  <select value={hotelMinRating} onChange={(e) => setHotelMinRating(e.target.value)} className="mt-2 w-full bg-transparent text-base font-bold text-white outline-none">
+                    <option value="" className="bg-surface-container">Any</option><option value="4" className="bg-surface-container">4.0+</option><option value="4.5" className="bg-surface-container">4.5+</option>
+                  </select>
+                </label>
+                <label className="rounded-xl border border-surface-container-highest/60 bg-surface-container p-3.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Sort by</span>
+                  <select value={hotelSort} onChange={(e) => setHotelSort(e.target.value)} className="mt-2 w-full bg-transparent text-sm font-bold text-white outline-none">
+                    <option value="recommended" className="bg-surface-container">Recommended</option><option value="price_asc" className="bg-surface-container">Price: Low to High</option><option value="price_desc" className="bg-surface-container">Price: High to Low</option><option value="rating_desc" className="bg-surface-container">Top Rated</option>
+                  </select>
+                </label>
+              </div>
+              {hotelError && <p className="rounded-lg border border-error/40 bg-error-container/30 px-3 py-2 text-xs text-error">{hotelError}</p>}
+              <div className="flex flex-col gap-3 border-t border-surface-container-highest pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-on-surface-variant">Indicative inventory · tax shown as listed or estimated</p>
+                <button type="submit" disabled={hotelLoading} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-7 py-3 font-headline text-sm font-bold text-on-primary shadow-lg transition hover:bg-emerald-400 disabled:opacity-60">
+                  <span className="material-symbols-outlined text-lg">{hotelLoading ? 'progress_activity' : 'hotel'}</span>
+                  {hotelLoading ? 'Searching stays…' : 'Search Hotels'}
+                </button>
+              </div>
+            </div>
+          )}
         </form>
+
+        {searchMode === 'hotels' && hotelResults && (
+          <section aria-live="polite" className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div><h2 className="font-headline text-xl font-bold text-white">Stays in {hotelCity}</h2><p className="mt-1 text-xs text-on-surface-variant">{hotelResults.total} matches · {hotelNights} {hotelNights === 1 ? 'night' : 'nights'}</p></div>
+              {hotelResults.total > 0 && <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">Value-ranked · taxes disclosed</span>}
+            </div>
+            {hotelResults.hotels.length ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {hotelResults.hotels.map((hotel) => <HotelResultCard key={hotel.hotel_id} hotel={hotel} onPlan={(item) => handleOpenAgent(`Help me plan a trip with ${item.hotel_name} in ${item.city} for ${hotelNights} ${hotelNights === 1 ? 'night' : 'nights'}. The indicative stay total is ₹${Math.round(item.stay_total_inr).toLocaleString('en-IN')}; compare it with flight options and my overall budget. Do not place a hotel booking.`)} />)}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-surface-container-highest bg-surface-container p-8 text-center text-sm text-on-surface-variant">No stays match those filters. Try raising the nightly budget or lowering the rating filter.</div>
+            )}
+          </section>
+        )}
 
         {/* Glowing AI Agent Spotlight Card */}
         <div className="w-full rounded-2xl p-6 sm:p-8 bg-surface-container-high border border-secondary/30 relative overflow-hidden shadow-[0_0_40px_rgba(99,102,241,0.12)]">

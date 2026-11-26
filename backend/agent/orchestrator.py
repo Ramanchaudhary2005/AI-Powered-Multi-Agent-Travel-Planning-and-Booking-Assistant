@@ -131,7 +131,7 @@ def _build_system_prompt(session: dict, user_context: dict | None = None) -> str
         "2. Use search_flights to find available options.\n"
         "3. Use rank_flights to compare and recommend the best options.\n"
         "4. For hotel requests, call search_hotels for filtered inventory or rank_hotels for recommendations; include the requested number of nights and compare stay_total_inr.\n"
-        "5. For a combined flight and hotel plan under one session budget, calculate flight total for all passengers, reserve that amount, and pass only the remaining INR to rank_hotels as max_total_stay_budget. Explain the split and never present a combined plan above the cap. Hotel discovery is available; do not imply a hotel booking has been placed.\n"
+        "5. For a combined flight and hotel request under one total budget B, follow COMBINED BUDGET RULES below exactly.\n"
         "6. If no flights match, use find_alternatives to broaden the search.\n"
         "7. Present flight and hotel options clearly. For each hotel, state whether the listed tax is source-provided or GST-estimated; never describe an estimated tax as exact.\n"
         "8. When the user picks a flight, guests without profile context should provide passenger name, age, gender, and contact email as before. For a logged-in user, use their saved name, email, age, and gender from [Logged-in User Context] when booking for them. For a saved co-traveller, use that person's saved name, age, and gender, and use the logged-in user's email as the booking contact. Never ask the user to repeat any known values. Ask for a booking field (name, email, age, or gender) only when that specific value is missing or null from the applicable logged-in context.\n"
@@ -145,6 +145,13 @@ def _build_system_prompt(session: dict, user_context: dict | None = None) -> str
         "Razorpay checkout.\n"
         "- ALL prices are in Indian Rupees (₹ / INR).\n"
         "- If the budget is set, warn the user if a booking would exceed it.\n"
+        "COMBINED FLIGHT + HOTEL BUDGET RULES (mandatory whenever both are requested under one total budget B):\n"
+        "1. Immediately call set_budget_cap(amount_inr=B) before any search.\n"
+        "2. Call search_flights, then rank_flights. The ranked flight result must be emitted so the user sees Top Ranked Flight Cards.\n"
+        "3. Wait for the ranked flight tool result, then calculate remaining_budget = B - the selected flight's total price (or the cheapest ranked flight's total price if none is selected). Include all passengers in the flight total.\n"
+        "4. Only after that calculation, call rank_hotels with max_total_stay_budget=remaining_budget, the requested nights, exact star_rating when specified (4 means exactly 4-star), and limit=3. Do not use search_hotels results as the combined-plan hotel recommendation.\n"
+        "5. A flight + hotel combination fits only when flight_total + hotel_stay_total_inr <= B. Show the explicit arithmetic and total against B. Never state or imply that an over-budget pair fits. If no hotels fit, say so and offer the within-budget flight alone or ask whether the user wants a different budget.\n"
+        "6. Ask which flight the user wants to book. Flights can be booked with create_booking and Razorpay checkout; hotel prices are indicative recommendations only. Never claim to reserve or pay for a hotel.\n"
         "- For authenticated users, greet them naturally by first name when appropriate. Resolve 'from my city' / 'mere home city se' from the saved city. Match named or relationship-referenced saved co-travellers and use their saved details without asking the user to repeat them. Do not infer a home city for guests.\n"
         "- Keep responses concise and helpful. Use bullet points for flight "
         "comparisons.\n"
@@ -392,7 +399,7 @@ def _stream_inner(session_id: int, user_message: str,
                     elif fc.name == "create_payment_order" and "error" not in result:
                         last_ui_payload = {"type": "PAYMENT_ORDER", "data": result}
                         yield _sse("ui_card", last_ui_payload)
-                    elif fc.name in {"search_hotels", "rank_hotels"} and "error" not in result:
+                    elif fc.name == "rank_hotels" and "error" not in result:
                         last_ui_payload = {"type": "HOTEL_RESULTS", "data": result}
                         yield _sse("hotels_result", last_ui_payload)
 

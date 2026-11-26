@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from backend.config import ROOT_DIR
@@ -111,7 +112,7 @@ def _fetch_hotels(city: str | None = None, min_rating: float | None = None,
         clauses.append("rating >= ?")
         params.append(min_rating)
     if star_rating is not None:
-        clauses.append("star_rating >= ?")
+        clauses.append("star_rating = ?")
         params.append(star_rating)
     if locality:
         clauses.append("(lower(location) LIKE lower(?) OR lower(hotel_name) LIKE lower(?) OR lower(coalesce(nearest_landmark, '')) LIKE lower(?))")
@@ -143,9 +144,11 @@ def search_hotels(city: str | None = None, max_price: float | None = None,
         raise ValueError("nights must be at least 1")
     if sort_by not in {"recommended", "price_asc", "price_desc", "rating_desc"}:
         raise ValueError("sort_by must be recommended, price_asc, price_desc, or rating_desc")
-    hotels = _score_rows(_fetch_hotels(city, min_rating, star_rating, locality), _city_median_price(city))
+    hotels = _fetch_hotels(city, min_rating, star_rating, locality)
     if max_price is not None:
+        # max_price is a true all-in per-night ceiling, including exact or estimated tax.
         hotels = [h for h in hotels if float(h["total_price_per_night_inr"]) <= max_price]
+    hotels = _score_rows(hotels, _city_median_price(city))
     for hotel in hotels:
         hotel["nights"] = nights
         hotel["stay_total_inr"] = round(float(hotel["total_price_per_night_inr"]) * nights, 2)
@@ -161,23 +164,32 @@ def search_hotels(city: str | None = None, max_price: float | None = None,
 
 def rank_hotels(city: str, nights: int = 1, max_total_stay_budget: float | None = None,
                 priority: str = "balanced", min_rating: float | None = None,
-                star_rating: float | None = None, limit: int = 5) -> dict[str, Any]:
+                star_rating: float | None = None, limit: int = 3) -> dict[str, Any]:
     if nights < 1:
         raise ValueError("nights must be at least 1")
     if priority not in {"balanced", "cheapest", "top_rated"}:
         raise ValueError("priority must be balanced, cheapest, or top_rated")
-    hotels = _score_rows(_fetch_hotels(city, min_rating, star_rating), _city_median_price(city))
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    limit = min(limit, 5)
+    hotels = _fetch_hotels(city, min_rating, star_rating)
     for hotel in hotels:
+        exact_stay_total = Decimal(str(hotel["total_price_per_night_inr"])) * nights
         hotel["nights"] = nights
-        hotel["stay_total_inr"] = round(float(hotel["total_price_per_night_inr"]) * nights, 2)
+        hotel["stay_total_inr"] = float(exact_stay_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        hotel["_exact_stay_total_inr"] = exact_stay_total
     if max_total_stay_budget is not None:
-        hotels = [h for h in hotels if h["stay_total_inr"] <= max_total_stay_budget]
+        budget = Decimal(str(max_total_stay_budget))
+        hotels = [h for h in hotels if h["_exact_stay_total_inr"] <= budget]
+    hotels = _score_rows(hotels, _city_median_price(city))
     if priority == "cheapest":
         hotels.sort(key=lambda h: (h["stay_total_inr"], -h["value_score"], h["hotel_name"].casefold()))
     elif priority == "top_rated":
         hotels.sort(key=lambda h: (-(h.get("rating") if h.get("rating") is not None else -1), -(h.get("reviews") or 0), -h["value_score"]))
     else:
         hotels.sort(key=lambda h: (-h["value_score"], h["stay_total_inr"], h["hotel_name"].casefold()))
+    for hotel in hotels:
+        hotel.pop("_exact_stay_total_inr", None)
     return {
         "city": city, "nights": nights, "priority": priority,
         "max_total_stay_budget": max_total_stay_budget,

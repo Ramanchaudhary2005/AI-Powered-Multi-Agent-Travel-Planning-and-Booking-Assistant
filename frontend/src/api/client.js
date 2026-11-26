@@ -45,6 +45,20 @@ export function getFlightById(flightId, travelDate) {
   return request(`/api/flights/${flightId}?${qs}`);
 }
 
+export function searchHotels(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  });
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : '';
+  return request(`/api/hotels/search${suffix}`);
+}
+
+export function getHotelDetails(hotelId) {
+  return request(`/api/hotels/${encodeURIComponent(hotelId)}`);
+}
+
 // ── Bookings ─────────────────────────────────────────────────────────────
 
 export function createBooking(payload) {
@@ -164,7 +178,7 @@ export function getSessionSteps(sessionId) {
 export async function streamAgentMessage(
   sessionId,
   content,
-  { onStepUpdate, onUiCard, onAssistantMessage, onBudgetUpdated, onDone, onError, signal } = {}
+  { onStepUpdate, onUiCard, onHotelsResult, onAssistantMessage, onBudgetUpdated, onDone, onError, signal } = {}
 ) {
   const token = localStorage.getItem('flightagent_jwt');
   const res = await fetch(`${API_BASE}/api/agent/message`, {
@@ -222,6 +236,7 @@ export async function streamAgentMessage(
 
     if (eventName === 'step_update') onStepUpdate?.(parsed);
     else if (eventName === 'ui_card') onUiCard?.(parsed);
+    else if (eventName === 'hotels_result') onHotelsResult?.(parsed);
     else if (eventName === 'assistant_message') onAssistantMessage?.(parsed);
     else if (eventName === 'budget_updated') onBudgetUpdated?.(parsed);
     else if (eventName === 'done') onDone?.(parsed);

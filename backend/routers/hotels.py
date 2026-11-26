@@ -14,7 +14,7 @@ def search_hotels(
     city: str | None = Query(default=None),
     max_price: float | None = Query(default=None, gt=0, description="Maximum total price per night including exact or estimated tax"),
     min_rating: float | None = Query(default=None, ge=0, le=5),
-    star_rating: float | None = Query(default=None, ge=1, le=5, description="Minimum star rating"),
+    star_rating: float | None = Query(default=None, ge=1, le=5, description="Exact star rating"),
     locality: str | None = Query(default=None),
     nights: int = Query(default=1, ge=1, le=90),
     sort_by: str = Query(default="recommended", pattern="^(recommended|price_asc|price_desc|rating_desc)$"),

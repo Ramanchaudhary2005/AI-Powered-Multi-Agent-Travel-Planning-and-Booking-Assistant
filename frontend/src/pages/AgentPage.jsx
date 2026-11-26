@@ -142,6 +142,52 @@ function RankedFlightsCard({ data, onQuickReply }) {
   );
 }
 
+function RankedHotelsCard({ data }) {
+  const hotels = (data?.hotels || []).slice(0, 3);
+  if (!hotels.length) return null;
+
+  return (
+    <div className="rounded-xl border border-surface-container-highest bg-surface-container p-4 shadow-md">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="text-xs font-bold uppercase tracking-wider text-on-surface">Top Ranked Hotels</span>
+        <span className="text-[10px] font-mono text-on-surface-variant">{data.city} · {data.nights} {data.nights === 1 ? 'night' : 'nights'}</span>
+      </div>
+      <div className="space-y-2.5">
+        {hotels.map((hotel) => {
+          const taxAmount = hotel.tax_is_estimated ? hotel.estimated_tax_inr : hotel.tax_inr;
+          return (
+            <article key={hotel.hotel_id} className="rounded-xl border border-surface-container-highest/70 bg-surface-container-low p-3.5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {hotel.badge && <span className="rounded bg-primary/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">{hotel.badge}</span>}
+                    <span className="rounded bg-secondary-container/50 px-2 py-0.5 text-[9px] font-bold text-secondary">Value {Number(hotel.value_score || 0).toFixed(0)}/100</span>
+                  </div>
+                  <h3 className="mt-1.5 text-sm font-bold text-white">{hotel.hotel_name}</h3>
+                  <p className="mt-0.5 text-[10px] text-on-surface-variant">{[hotel.location, hotel.city].filter(Boolean).join(' · ')}</p>
+                </div>
+                <div className="text-right text-[10px]">
+                  <p className="font-semibold text-amber-300">{hotel.star_rating == null ? 'Hotel' : `${Number(hotel.star_rating).toFixed(0)}★`}</p>
+                  <p className="mt-0.5 text-on-surface"><strong className="text-white">{hotel.rating == null ? '—' : Number(hotel.rating).toFixed(1)}</strong> {hotel.rating_description || 'rating'}</p>
+                  <p className="text-on-surface-variant">{Number(hotel.reviews || 0).toLocaleString('en-IN')} reviews</p>
+                </div>
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-surface-container-highest/70 pt-2.5 text-[10px]">
+                <span className="text-on-surface-variant">{formatINR(hotel.price_inr)} / night</span>
+                {taxAmount != null && <span className={hotel.tax_is_estimated ? 'text-amber-300' : 'text-on-surface-variant'}>+ {formatINR(taxAmount)} {hotel.tax_is_estimated ? 'est. GST' : 'tax'}</span>}
+                <span className="font-semibold text-primary">Stay total: {formatINR(hotel.stay_total_inr)}</span>
+                {hotel.distance_to_landmark_km != null && hotel.nearest_landmark && <span className="text-on-surface-variant">{hotel.distance_to_landmark_km} km from {hotel.nearest_landmark}</span>}
+              </div>
+              {hotel.explanation && <p className="mt-2 text-[10px] leading-relaxed text-on-surface-variant">{hotel.explanation}</p>}
+            </article>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[9px] text-on-surface-variant/80">Hotel prices are indicative; no hotel reservation or payment was made.</p>
+    </div>
+  );
+}
+
 function PaymentOrderCard({ data }) {
   const [paying, setPaying] = useState(false);
   const [paidResult, setPaidResult] = useState(null);
@@ -326,7 +372,7 @@ export default function AgentPage() {
       ? `My budget is ₹7,000 — find cheapest non-stop flight from ${user.city} to Mumbai`
       : 'Find cheapest non-stop Delhi to Mumbai flight next week',
     'Compare morning flights from Bangalore to Delhi',
-    'Find alternatives if no Business class flights under ₹8,000',
+    'Plan a Delhi to Mumbai flight + 2-night 4-star hotel stay under ₹18,000',
   ];
 
   // Create session if visited at /agent without :sessionId
@@ -431,6 +477,10 @@ export default function AgentPage() {
             streamedCards = [...streamedCards, card];
             setLiveCards([...streamedCards]);
           },
+          onHotelsResult: (card) => {
+            streamedCards = [...streamedCards, card];
+            setLiveCards([...streamedCards]);
+          },
           onBudgetUpdated: (event) => {
             const cap = event.budget_cap ?? null;
             setSession((current) => current ? { ...current, budget: cap } : current);
@@ -438,6 +488,18 @@ export default function AgentPage() {
             setEditingBudget(false);
           },
           onAssistantMessage: (msg) => {
+            let persistedCard = null;
+            if (msg.ui_payload_json) {
+              try {
+                persistedCard = JSON.parse(msg.ui_payload_json);
+              } catch {
+                persistedCard = null;
+              }
+            }
+            const cards = streamedCards.length ? streamedCards : persistedCard ? [persistedCard] : [];
+            const uiPayloadJson = cards.length > 1
+              ? JSON.stringify({ type: 'MULTIPLE', cards })
+              : cards.length === 1 ? JSON.stringify(cards[0]) : msg.ui_payload_json || null;
             setLiveCards([]);
             setMessages((prev) => [
               ...prev,
@@ -445,14 +507,23 @@ export default function AgentPage() {
                 message_id: `ast-${Date.now()}`,
                 role: 'assistant',
                 content: msg.content,
-                ui_payload_json: msg.ui_payload_json || null,
+                ui_payload_json: uiPayloadJson,
                 created_at: new Date().toISOString(),
               },
             ]);
           },
           onDone: () => {
             // Re-hydrate from SQLite so full input_json / output_json & IDs are synced
-            hydrateSession(sessionId).catch(() => {});
+            hydrateSession(sessionId).then((data) => {
+              if (streamedCards.length > 1) {
+                const latestAssistant = [...(data.messages || [])].reverse().find((message) => message.role === 'assistant');
+                if (latestAssistant) {
+                  setMessages((current) => current.map((message) => message.message_id === latestAssistant.message_id
+                    ? { ...message, ui_payload_json: JSON.stringify({ type: 'MULTIPLE', cards: streamedCards }) }
+                    : message));
+                }
+              }
+            }).catch(() => {});
           },
         });
       } catch (err) {
@@ -610,6 +681,9 @@ export default function AgentPage() {
                     uiPayload = null;
                   }
                 }
+                const assistantCards = uiPayload?.type === 'MULTIPLE'
+                  ? uiPayload.cards || []
+                  : uiPayload ? [uiPayload] : [];
 
                 return (
                   <div key={m.message_id} className="flex items-start gap-3.5 max-w-2xl">
@@ -628,12 +702,13 @@ export default function AgentPage() {
                         <ReactMarkdown components={CHAT_MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>
                       </div>
 
-                      {uiPayload?.type === 'RANKED_FLIGHTS' && (
-                        <RankedFlightsCard data={uiPayload.data} onQuickReply={sendMessage} />
-                      )}
-                      {uiPayload?.type === 'PAYMENT_ORDER' && (
-                        <PaymentOrderCard data={uiPayload.data} />
-                      )}
+                      {assistantCards.map((card, index) => (
+                        <div key={`${card.type}-${index}`}>
+                          {card.type === 'RANKED_FLIGHTS' && <RankedFlightsCard data={card.data} onQuickReply={sendMessage} />}
+                          {card.type === 'PAYMENT_ORDER' && <PaymentOrderCard data={card.data} />}
+                          {card.type === 'HOTEL_RESULTS' && <RankedHotelsCard data={card.data} />}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
@@ -648,6 +723,8 @@ export default function AgentPage() {
                     <RankedFlightsCard key={i} data={card.data} onQuickReply={sendMessage} />
                   ) : card.type === 'PAYMENT_ORDER' ? (
                     <PaymentOrderCard key={i} data={card.data} />
+                  ) : card.type === 'HOTEL_RESULTS' ? (
+                    <RankedHotelsCard key={i} data={card.data} />
                   ) : null
                 )}
               </div>

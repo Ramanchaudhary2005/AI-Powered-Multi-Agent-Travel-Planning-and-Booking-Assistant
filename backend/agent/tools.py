@@ -1,5 +1,5 @@
 """
-Agent tools — 5 Gemini function-declarations + dispatcher.
+Agent tools — 8 Gemini function-declarations + dispatcher.
 
 Each tool wraps the corresponding ``backend/services/`` function.
 ``create_booking`` and ``create_payment_order`` are guarded by budget_guard.
@@ -195,7 +195,7 @@ _search_hotels = types.FunctionDeclaration(
             "city": types.Schema(type=types.Type.STRING, enum=CITIES),
             "max_price_per_night": types.Schema(type=types.Type.NUMBER, description="Maximum total INR per night, including tax"),
             "min_rating": types.Schema(type=types.Type.NUMBER, description="Minimum guest rating from 0 to 5"),
-            "star_rating": types.Schema(type=types.Type.NUMBER, description="Minimum hotel star rating from 1 to 5"),
+            "star_rating": types.Schema(type=types.Type.NUMBER, description="Exact hotel star rating from 1 to 5"),
             "locality": types.Schema(type=types.Type.STRING, description="Optional locality, hotel, or landmark text"),
             "nights": types.Schema(type=types.Type.INTEGER, description="Number of nights, default 1"),
             "limit": types.Schema(type=types.Type.INTEGER, description="Maximum hotels to return, default 10"),
@@ -218,8 +218,8 @@ _rank_hotels = types.FunctionDeclaration(
             "max_total_stay_budget": types.Schema(type=types.Type.NUMBER, description="Maximum INR for the full hotel stay"),
             "priority": types.Schema(type=types.Type.STRING, enum=["balanced", "cheapest", "top_rated"]),
             "min_rating": types.Schema(type=types.Type.NUMBER),
-            "star_rating": types.Schema(type=types.Type.NUMBER),
-            "limit": types.Schema(type=types.Type.INTEGER, description="Maximum hotels to return, default 5"),
+            "star_rating": types.Schema(type=types.Type.NUMBER, description="Exact hotel star rating, e.g. 4 means exactly 4-star"),
+            "limit": types.Schema(type=types.Type.INTEGER, description="Maximum hotels to return, default 3 and never more than 5"),
         },
         required=["city"],
     ),
@@ -312,7 +312,7 @@ def execute(
             priority=args.get("priority", "balanced"),
             min_rating=args.get("min_rating"),
             star_rating=args.get("star_rating"),
-            limit=int(args.get("limit", 5)),
+            limit=int(args.get("limit", 3)),
         )
         context["last_hotel_results"] = result["hotels"]
         return result

@@ -18,6 +18,7 @@ from backend.db import duck, sqlite as sqlite_mod
 from backend.services import (
     booking_service,
     flight_service,
+    hotel_service,
     payment_service,
     ranking_service,
 )
@@ -182,6 +183,48 @@ _create_payment_order = types.FunctionDeclaration(
     ),
 )
 
+_search_hotels = types.FunctionDeclaration(
+    name="search_hotels",
+    description=(
+        "Search curated hotels in Delhi, Mumbai, Bangalore, Kolkata, Hyderabad, "
+        "or Chennai. Prices include the listed tax or a clearly disclosed GST estimate."
+    ),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "city": types.Schema(type=types.Type.STRING, enum=CITIES),
+            "max_price_per_night": types.Schema(type=types.Type.NUMBER, description="Maximum total INR per night, including tax"),
+            "min_rating": types.Schema(type=types.Type.NUMBER, description="Minimum guest rating from 0 to 5"),
+            "star_rating": types.Schema(type=types.Type.NUMBER, description="Minimum hotel star rating from 1 to 5"),
+            "locality": types.Schema(type=types.Type.STRING, description="Optional locality, hotel, or landmark text"),
+            "nights": types.Schema(type=types.Type.INTEGER, description="Number of nights, default 1"),
+            "limit": types.Schema(type=types.Type.INTEGER, description="Maximum hotels to return, default 10"),
+        },
+        required=["city"],
+    ),
+)
+
+_rank_hotels = types.FunctionDeclaration(
+    name="rank_hotels",
+    description=(
+        "Rank curated hotels by balanced value, cheapest total stay, or highest rating. "
+        "Can constrain the full stay total to a remaining hotel budget."
+    ),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "city": types.Schema(type=types.Type.STRING, enum=CITIES),
+            "nights": types.Schema(type=types.Type.INTEGER, description="Number of nights, default 1"),
+            "max_total_stay_budget": types.Schema(type=types.Type.NUMBER, description="Maximum INR for the full hotel stay"),
+            "priority": types.Schema(type=types.Type.STRING, enum=["balanced", "cheapest", "top_rated"]),
+            "min_rating": types.Schema(type=types.Type.NUMBER),
+            "star_rating": types.Schema(type=types.Type.NUMBER),
+            "limit": types.Schema(type=types.Type.INTEGER, description="Maximum hotels to return, default 5"),
+        },
+        required=["city"],
+    ),
+)
+
 GEMINI_TOOL = types.Tool(
     function_declarations=[
         _search_flights,
@@ -190,6 +233,8 @@ GEMINI_TOOL = types.Tool(
         _create_booking,
         _create_payment_order,
         _set_budget_cap,
+        _search_hotels,
+        _rank_hotels,
     ]
 )
 
@@ -245,6 +290,32 @@ def execute(
             conn.close()
         context["budget_cap"] = amount
         return {"budget_cap": amount}
+
+    if name == "search_hotels":
+        result = hotel_service.search_hotels(
+            city=args["city"],
+            max_price=args.get("max_price_per_night"),
+            min_rating=args.get("min_rating"),
+            star_rating=args.get("star_rating"),
+            locality=args.get("locality"),
+            nights=int(args.get("nights", 1)),
+            limit=int(args.get("limit", 10)),
+        )
+        context["last_hotel_results"] = result["hotels"]
+        return result
+
+    if name == "rank_hotels":
+        result = hotel_service.rank_hotels(
+            city=args["city"],
+            nights=int(args.get("nights", 1)),
+            max_total_stay_budget=args.get("max_total_stay_budget"),
+            priority=args.get("priority", "balanced"),
+            min_rating=args.get("min_rating"),
+            star_rating=args.get("star_rating"),
+            limit=int(args.get("limit", 5)),
+        )
+        context["last_hotel_results"] = result["hotels"]
+        return result
 
     if name == "search_flights":
         results = flight_service.search_flights(

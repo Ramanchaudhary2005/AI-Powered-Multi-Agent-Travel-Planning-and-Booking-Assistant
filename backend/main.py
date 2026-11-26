@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.sqlite import init_db
-from backend.routers import agent, analytics, auth, bookings, flights, payments, profile, wishlist
+from backend.routers import agent, analytics, auth, bookings, flights, hotels, payments, profile, wishlist
 
 
 @asynccontextmanager
@@ -47,3 +47,4 @@ app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(wishlist.router)
 app.include_router(analytics.router)
+app.include_router(hotels.router)

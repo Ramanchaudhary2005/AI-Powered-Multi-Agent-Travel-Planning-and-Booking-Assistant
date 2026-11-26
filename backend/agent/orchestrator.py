@@ -123,17 +123,20 @@ def _build_system_prompt(session: dict, user_context: dict | None = None) -> str
         f"BOOKABLE WINDOW: {tomorrow.isoformat()} to {max_date.isoformat()} "
         f"(1–49 days from today)\n"
         f"SUPPORTED CITIES: Delhi, Mumbai, Bangalore, Kolkata, Hyderabad, Chennai\n"
+        "HOTEL INVENTORY: Curated hotel listings are available in Delhi, Mumbai, Bangalore, Kolkata, Hyderabad, and Chennai. Use search_hotels or rank_hotels independently of flights when lodging is requested.\n"
         f"SESSION BUDGET: {budget_str}\n\n"
         f"{profile_block}"
         "YOUR WORKFLOW:\n"
         "1. Understand the user's travel needs (cities, dates, class, number of passengers). If they state or change a budget in any form, immediately call set_budget_cap before searching, ranking, or booking.\n"
         "2. Use search_flights to find available options.\n"
         "3. Use rank_flights to compare and recommend the best options.\n"
-        "4. If no flights match, use find_alternatives to broaden the search.\n"
-        "5. Present options clearly with prices, times, and stops.\n"
-        "6. When the user picks a flight, guests without profile context should provide passenger name, age, gender, and contact email as before. For a logged-in user, use their saved name, email, age, and gender from [Logged-in User Context] when booking for them. For a saved co-traveller, use that person's saved name, age, and gender, and use the logged-in user's email as the booking contact. Never ask the user to repeat any known values. Ask for a booking field (name, email, age, or gender) only when that specific value is missing or null from the applicable logged-in context.\n"
-        "7. Use create_booking to hold the seats.\n"
-        "8. Use create_payment_order to generate a payment order.\n\n"
+        "4. For hotel requests, call search_hotels for filtered inventory or rank_hotels for recommendations; include the requested number of nights and compare stay_total_inr.\n"
+        "5. For a combined flight and hotel plan under one session budget, calculate flight total for all passengers, reserve that amount, and pass only the remaining INR to rank_hotels as max_total_stay_budget. Explain the split and never present a combined plan above the cap. Hotel discovery is available; do not imply a hotel booking has been placed.\n"
+        "6. If no flights match, use find_alternatives to broaden the search.\n"
+        "7. Present flight and hotel options clearly. For each hotel, state whether the listed tax is source-provided or GST-estimated; never describe an estimated tax as exact.\n"
+        "8. When the user picks a flight, guests without profile context should provide passenger name, age, gender, and contact email as before. For a logged-in user, use their saved name, email, age, and gender from [Logged-in User Context] when booking for them. For a saved co-traveller, use that person's saved name, age, and gender, and use the logged-in user's email as the booking contact. Never ask the user to repeat any known values. Ask for a booking field (name, email, age, or gender) only when that specific value is missing or null from the applicable logged-in context.\n"
+        "9. Use create_booking to hold the seats.\n"
+        "10. Use create_payment_order to generate a payment order.\n\n"
         "STRICT RULES:\n"
         "- NEVER invent or fabricate flight IDs. Always search first and use "
         "IDs from search results.\n"
@@ -257,6 +260,12 @@ def _summarise(tool_name: str, result: dict) -> str:
         return f"Booking {result.get('pnr', '?')} created"
     if tool_name == "create_payment_order":
         return f"Payment order {result.get('gateway_order_id', '?')} created"
+    if tool_name in {"search_hotels", "rank_hotels"}:
+        hotels = result.get("hotels", [])
+        best = hotels[0] if hotels else {}
+        if best:
+            return f"Found {result.get('total', len(hotels))} hotels; top pick {best.get('hotel_name', '?')} at ₹{best.get('stay_total_inr', best.get('total_price_per_night_inr', '?'))}"
+        return "No hotels matched the requested filters"
     return "Done"
 
 
@@ -320,7 +329,7 @@ def _stream_inner(session_id: int, user_message: str,
     turn_id = _next_turn_id(session_id)
     step_no = 0
     last_ui_payload: dict | None = None
-    context: dict[str, Any] = {"last_search_results": [], "user_context": user_context}
+    context: dict[str, Any] = {"last_search_results": [], "last_hotel_results": [], "user_context": user_context}
 
     # ── Tool loop (max 6 iterations) ─────────────────────────────────
     for _iteration in range(MAX_ITERATIONS):
@@ -383,6 +392,9 @@ def _stream_inner(session_id: int, user_message: str,
                     elif fc.name == "create_payment_order" and "error" not in result:
                         last_ui_payload = {"type": "PAYMENT_ORDER", "data": result}
                         yield _sse("ui_card", last_ui_payload)
+                    elif fc.name in {"search_hotels", "rank_hotels"} and "error" not in result:
+                        last_ui_payload = {"type": "HOTEL_RESULTS", "data": result}
+                        yield _sse("hotels_result", last_ui_payload)
 
                 except Exception as exc:
                     summary = str(exc)

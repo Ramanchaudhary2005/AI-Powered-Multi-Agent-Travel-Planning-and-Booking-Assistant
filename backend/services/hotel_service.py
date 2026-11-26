@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+from functools import lru_cache
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
+from threading import Lock
 from typing import Any
 
 from backend.config import ROOT_DIR
@@ -13,6 +15,32 @@ from backend.db import duck
 
 REPORT_PATH = ROOT_DIR / "data" / "curated" / "data_quality_report.json"
 HOTEL_CITIES = ["Delhi", "Mumbai", "Bangalore", "Kolkata", "Hyderabad", "Chennai"]
+_HOTEL_ROWS: list[dict[str, Any]] | None = None
+_HOTEL_LOCK = Lock()
+_CITY_MEDIANS: dict[str, float] = {}
+
+
+def warm_hotel_cache() -> None:
+    """Load the small immutable curated inventory once at startup."""
+    global _HOTEL_ROWS, _CITY_MEDIANS
+    if _HOTEL_ROWS is not None:
+        return
+    with _HOTEL_LOCK:
+        if _HOTEL_ROWS is not None:
+            return
+        cursor = duck.get_connection()
+        try:
+            rows = _rows(cursor.execute("SELECT * FROM hotels ORDER BY hotel_id"))
+        finally:
+            cursor.close()
+        medians: dict[str, float] = {}
+        for city in HOTEL_CITIES:
+            prices = sorted(float(row["price_inr"]) for row in rows if row["city"].casefold() == city.casefold())
+            if prices:
+                mid = len(prices) // 2
+                medians[city.casefold()] = prices[mid] if len(prices) % 2 else (prices[mid - 1] + prices[mid]) / 2
+        _HOTEL_ROWS = rows
+        _CITY_MEDIANS = medians
 
 
 def _rows(cursor) -> list[dict[str, Any]]:
@@ -23,6 +51,8 @@ def _rows(cursor) -> list[dict[str, Any]]:
 def _city_median_price(city: str | None) -> float | None:
     if not city:
         return None
+    if _HOTEL_ROWS is not None:
+        return _CITY_MEDIANS.get(city.strip().casefold())
     hotels = _fetch_hotels(city)
     prices = sorted(float(hotel["price_inr"]) for hotel in hotels)
     if not prices:
@@ -103,30 +133,21 @@ def _score_rows(hotels: list[dict[str, Any]], city_median_price: float | None = 
 
 def _fetch_hotels(city: str | None = None, min_rating: float | None = None,
                   star_rating: float | None = None, locality: str | None = None) -> list[dict[str, Any]]:
-    clauses: list[str] = []
-    params: list[Any] = []
+    warm_hotel_cache()
+    hotels = _HOTEL_ROWS or []
     if city:
-        clauses.append("lower(city) = lower(?)")
-        params.append(city.strip())
+        target_city = city.strip().casefold()
+        hotels = [hotel for hotel in hotels if str(hotel.get("city") or "").casefold() == target_city]
     if min_rating is not None:
-        clauses.append("rating >= ?")
-        params.append(min_rating)
+        hotels = [hotel for hotel in hotels if hotel.get("rating") is not None and float(hotel["rating"]) >= min_rating]
     if star_rating is not None:
-        clauses.append("star_rating = ?")
-        params.append(star_rating)
+        hotels = [hotel for hotel in hotels if hotel.get("star_rating") is not None and float(hotel["star_rating"]) == star_rating]
     if locality:
-        clauses.append("(lower(location) LIKE lower(?) OR lower(hotel_name) LIKE lower(?) OR lower(coalesce(nearest_landmark, '')) LIKE lower(?))")
-        pattern = f"%{locality.strip()}%"
-        params.extend((pattern, pattern, pattern))
-    sql = "SELECT * FROM hotels"
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY hotel_id"
-    con = duck.get_connection()
-    try:
-        return _rows(con.execute(sql, params))
-    finally:
-        con.close()
+        query = locality.strip().casefold()
+        hotels = [hotel for hotel in hotels if query in str(hotel.get("location") or "").casefold()
+                  or query in str(hotel.get("hotel_name") or "").casefold()
+                  or query in str(hotel.get("nearest_landmark") or "").casefold()]
+    return [dict(hotel) for hotel in hotels]
 
 
 def _stay_total(hotel: dict[str, Any], nights: int) -> dict[str, Any]:
@@ -136,10 +157,10 @@ def _stay_total(hotel: dict[str, Any], nights: int) -> dict[str, Any]:
     return result
 
 
-def search_hotels(city: str | None = None, max_price: float | None = None,
-                  min_rating: float | None = None, star_rating: float | None = None,
-                  locality: str | None = None, nights: int = 1,
-                  sort_by: str = "recommended", limit: int = 20) -> dict[str, Any]:
+@lru_cache(maxsize=128)
+def _search_hotels_cached(city: str | None, max_price: float | None, min_rating: float | None,
+                          star_rating: float | None, locality: str | None, nights: int,
+                          sort_by: str, limit: int) -> dict[str, Any]:
     if nights < 1:
         raise ValueError("nights must be at least 1")
     if sort_by not in {"recommended", "price_asc", "price_desc", "rating_desc"}:
@@ -160,6 +181,16 @@ def search_hotels(city: str | None = None, max_price: float | None = None,
     }
     hotels.sort(key=orderings[sort_by])
     return {"city": city, "nights": nights, "total": len(hotels), "hotels": hotels[:limit]}
+
+
+def search_hotels(city: str | None = None, max_price: float | None = None,
+                  min_rating: float | None = None, star_rating: float | None = None,
+                  locality: str | None = None, nights: int = 1,
+                  sort_by: str = "recommended", limit: int = 20) -> dict[str, Any]:
+    result = _search_hotels_cached(city.strip() if city else None, max_price, min_rating,
+                                   star_rating, locality.strip() if locality else None,
+                                   nights, sort_by, limit)
+    return {**result, "hotels": [dict(hotel) for hotel in result["hotels"]]}
 
 
 def rank_hotels(city: str, nights: int = 1, max_total_stay_budget: float | None = None,

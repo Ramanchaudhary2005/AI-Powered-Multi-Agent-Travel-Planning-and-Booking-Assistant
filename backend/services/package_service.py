@@ -74,6 +74,7 @@ def create_package(*, flight_id: int, travel_date: str, passengers: list[dict[st
             conn.commit()
         finally:
             conn.close()
+        flight_service.invalidate_search_cache()
         raise
     return {"package_ref": package_ref, "flight_booking": flight_booking,
             "hotel_booking": hotel_booking_service.get_hotel_booking(hotel_booking["booking_ref"]), "order": order,
@@ -102,6 +103,7 @@ def verify_package(package_ref: str, order_id: str, payment_id: str, signature: 
         conn.commit()
     finally:
         conn.close()
+    flight_service.invalidate_search_cache()
     # Generate both documents before returning the successful confirmation.
     ticket_service.generate_ticket(flight["pnr"])
     hotel_voucher_service.generate_voucher(hotel["booking_ref"])

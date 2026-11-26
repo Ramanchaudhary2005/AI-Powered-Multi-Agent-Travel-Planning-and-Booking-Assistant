@@ -9,6 +9,9 @@ PENDING_PAYMENT) from the DuckDB ``seats_available`` baseline.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from collections import OrderedDict
+from threading import Lock
+import time
 from typing import Any
 
 from backend.db import duck, sqlite as sqlite_mod
@@ -25,6 +28,14 @@ _FLIGHT_COLUMNS = (
     "departure_time, arrival_time, dep_clock, arr_clock, stops, stops_count, "
     '"class" AS travel_class, duration_hrs, days_left, price, seats_available'
 )
+_SEARCH_CACHE: OrderedDict[tuple, tuple[float, list[dict[str, Any]]]] = OrderedDict()
+_SEARCH_CACHE_LOCK = Lock()
+_SEARCH_CACHE_MAXSIZE = 128
+_SEARCH_CACHE_TTL_SECONDS = 30.0
+_RESPONSE_CACHE: OrderedDict[tuple, tuple[float, list[dict[str, Any]]]] = OrderedDict()
+_RESPONSE_CACHE_TTL_SECONDS = 1.0
+_LAST_HOLD_SWEEP = 0.0
+_HOLD_SWEEP_LOCK = Lock()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -49,17 +60,33 @@ def resolve_days_left(travel_date: str) -> int:
     return days
 
 
-def expire_stale_holds() -> None:
+def expire_stale_holds(force: bool = True) -> None:
     """Mark overdue PENDING_PAYMENT bookings as EXPIRED."""
+    global _LAST_HOLD_SWEEP
+    now = time.monotonic()
+    if not force and now - _LAST_HOLD_SWEEP < 1.0:
+        return
+    with _HOLD_SWEEP_LOCK:
+        now = time.monotonic()
+        if not force and now - _LAST_HOLD_SWEEP < 1.0:
+            return
+        _expire_stale_holds_locked(now)
+
+
+def _expire_stale_holds_locked(now: float) -> None:
+    global _LAST_HOLD_SWEEP
     now_utc = datetime.now(timezone.utc).isoformat()
     conn = sqlite_mod.get_connection()
     try:
-        conn.execute(
+        cursor = conn.execute(
             "UPDATE bookings SET status = 'EXPIRED' "
             "WHERE status = 'PENDING_PAYMENT' AND hold_expires < ?;",
             (now_utc,),
         )
         conn.commit()
+        _LAST_HOLD_SWEEP = now
+        if cursor.rowcount:
+            invalidate_search_cache()
     finally:
         conn.close()
 
@@ -95,6 +122,56 @@ def _rows_to_dicts(cursor) -> list[dict[str, Any]]:
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
+def _cached_candidates(cache_key: tuple, where: str, params: list[Any]) -> list[dict[str, Any]]:
+    now = time.monotonic()
+    with _SEARCH_CACHE_LOCK:
+        entry = _SEARCH_CACHE.get(cache_key)
+        if entry and now - entry[0] < _SEARCH_CACHE_TTL_SECONDS:
+            _SEARCH_CACHE.move_to_end(cache_key)
+            return [dict(row) for row in entry[1]]
+        if entry:
+            _SEARCH_CACHE.pop(cache_key, None)
+    con = duck.get_connection()
+    try:
+        rows = _rows_to_dicts(con.execute(
+            f"SELECT {_FLIGHT_COLUMNS} FROM flights WHERE {where} ORDER BY price ASC LIMIT 200;", params
+        ))
+    finally:
+        con.close()
+    with _SEARCH_CACHE_LOCK:
+        _SEARCH_CACHE[cache_key] = (now, rows)
+        _SEARCH_CACHE.move_to_end(cache_key)
+        while len(_SEARCH_CACHE) > _SEARCH_CACHE_MAXSIZE:
+            _SEARCH_CACHE.popitem(last=False)
+    return [dict(row) for row in rows]
+
+
+def invalidate_search_cache() -> None:
+    """Drop cached live-seat snapshots after a booking lifecycle change."""
+    with _SEARCH_CACHE_LOCK:
+        _RESPONSE_CACHE.clear()
+
+
+def _cached_response(cache_key: tuple) -> list[dict[str, Any]] | None:
+    with _SEARCH_CACHE_LOCK:
+        entry = _RESPONSE_CACHE.get(cache_key)
+        if not entry:
+            return None
+        if time.monotonic() - entry[0] >= _RESPONSE_CACHE_TTL_SECONDS:
+            _RESPONSE_CACHE.pop(cache_key, None)
+            return None
+        _RESPONSE_CACHE.move_to_end(cache_key)
+        return [dict(row) for row in entry[1]]
+
+
+def _store_response(cache_key: tuple, flights: list[dict[str, Any]]) -> None:
+    with _SEARCH_CACHE_LOCK:
+        _RESPONSE_CACHE[cache_key] = (time.monotonic(), [dict(row) for row in flights])
+        _RESPONSE_CACHE.move_to_end(cache_key)
+        while len(_RESPONSE_CACHE) > _SEARCH_CACHE_MAXSIZE:
+            _RESPONSE_CACHE.popitem(last=False)
+
+
 def _attach_live_seats(
     flights: list[dict], travel_date: str, min_passengers: int = 1
 ) -> list[dict]:
@@ -124,8 +201,15 @@ def search_flights(
     """
     Return up to 50 matching flights sorted by price ASC with live seat counts.
     """
-    expire_stale_holds()
+    # Search results recheck active holds directly; run the status sweep at most
+    # once per second to avoid a no-op SQLite write on every filter search.
+    expire_stale_holds(force=False)
     days_left = resolve_days_left(travel_date)
+    response_key = (source_city.strip(), destination_city.strip(), days_left,
+                    travel_date, travel_class.strip(), passengers, max_price, stops, departure_time)
+    cached_response = _cached_response(response_key)
+    if cached_response is not None:
+        return cached_response
 
     where = 'source_city = ? AND destination_city = ? AND days_left = ? AND "class" = ?'
     params: list[Any] = [source_city, destination_city, days_left, travel_class]
@@ -140,22 +224,18 @@ def search_flights(
         where += " AND departure_time = ?"
         params.append(departure_time)
 
-    con = duck.get_connection()
-    try:
-        cur = con.execute(
-            f"SELECT {_FLIGHT_COLUMNS} FROM flights "
-            f"WHERE {where} ORDER BY price ASC LIMIT 200;",
-            params,
-        )
-        flights = _rows_to_dicts(cur)
-    finally:
-        con.close()
+    cache_key = (source_city.strip(), destination_city.strip(), days_left,
+                 travel_class.strip(), max_price, stops, departure_time)
+    flights = _cached_candidates(cache_key, where, params)
 
     flights = _attach_live_seats(flights, travel_date, passengers)
     # Advisory-only model enrichment. Missing/corrupt artifacts never block search.
     from backend.services.ml_service import attach_price_signals
-    flights = attach_price_signals(flights)
-    return flights[:50]
+    # Seat availability is checked against SQLite for all candidates; ML work is
+    # limited to the final page returned to the client.
+    result = attach_price_signals(flights[:50])
+    _store_response(response_key, result)
+    return result
 
 
 def get_flight_by_id(flight_id: int, travel_date: str) -> dict[str, Any] | None:

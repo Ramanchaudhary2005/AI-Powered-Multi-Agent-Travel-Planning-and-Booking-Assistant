@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import joblib
@@ -16,6 +18,9 @@ MODEL_PATH = ROOT_DIR / "data" / "curated" / "fare_predictor.joblib"
 REPORT_PATH = ROOT_DIR / "data" / "curated" / "ml_evaluation_report.json"
 QUALITY_PATH = ROOT_DIR / "data" / "curated" / "data_quality_report.json"
 _ARTIFACT: dict | bool | None = None
+_SIGNAL_CACHE: OrderedDict[tuple, tuple[float, float, float]] = OrderedDict()
+_SIGNAL_CACHE_LOCK = Lock()
+_SIGNAL_CACHE_SIZE = 512
 
 
 def _artifact() -> dict | None:
@@ -40,6 +45,27 @@ def reload_artifact() -> None:
     """Allow deployments/tests to retry loading after a model file is restored."""
     global _ARTIFACT
     _ARTIFACT = None
+
+
+def warm_model() -> None:
+    """Load the optional prediction artifact during application startup."""
+    artifact = _artifact()
+    if artifact is None:
+        return
+    # Initialize sklearn's numeric/pipeline runtime before the first request.
+    stats = artifact.get("route_stats", {})
+    route_key = next(iter(stats.get("median", {})), None)
+    source, destination, flight_class = (route_key.split("→")[0], *route_key.split("→")[1].split("|")) if route_key and "→" in route_key else ("Delhi", "Mumbai", "Economy")
+    sample = {
+        "source_city": source, "destination_city": destination,
+        "airline": "IndiGo", "flight_class": flight_class,
+        "departure_time": "Morning", "arrival_time": "Afternoon",
+        "route_pair": f"{source}→{destination}", "stops_count": 0,
+        "duration_hrs": 2.2, "days_left": 21,
+        "route_class_mean": stats.get("mean", {}).get(route_key, artifact.get("global_mean", 0)),
+        "route_class_median": stats.get("median", {}).get(route_key, artifact.get("global_median", 0)),
+    }
+    artifact["model"].predict(pd.DataFrame([sample])[artifact["features"]])
 
 
 def _route_key(source: str, destination: str, flight_class: str) -> str:
@@ -122,22 +148,86 @@ def predict_fare_timing(*, source_city: str, destination_city: str, airline: str
 
 
 def attach_price_signals(flights: list[dict]) -> list[dict]:
-    """Add optional signals; any model/data error leaves results unchanged."""
+    """Add cached, vectorized advisory signals to the final returned batch."""
     if not flights:
         return flights
-    if _artifact() is None:
+    artifact = _artifact()
+    if artifact is None:
         return flights
     try:
+        normalized = []
         for flight in flights:
-            signal = predict_fare_timing(
-                source_city=flight["source_city"],destination_city=flight["destination_city"],
-                airline=flight["airline"],flight_class=flight.get("travel_class") or flight.get("class") or "Economy",
-                days_left=int(flight["days_left"]),current_price=float(flight["price"]),
-                stops_count=int(flight.get("stops_count") or 0),duration_hrs=float(flight.get("duration_hrs") or 2.2),
-                departure_time=flight.get("departure_time") or "Morning",arrival_time=flight.get("arrival_time") or "Afternoon",
+            flight_class = flight.get("travel_class") or flight.get("class") or "Economy"
+            days = max(1, min(49, int(flight["days_left"])))
+            key = (flight["source_city"], flight["destination_city"], flight["airline"],
+                   flight_class, int(flight.get("stops_count") or 0),
+                   round(float(flight.get("duration_hrs") or 2.2), 1), days,
+                   flight.get("departure_time") or "Morning", flight.get("arrival_time") or "Afternoon")
+            normalized.append((flight, key))
+
+        values: dict[tuple, tuple[float, float, float]] = {}
+        misses = []
+        with _SIGNAL_CACHE_LOCK:
+            for flight, key in normalized:
+                cached = _SIGNAL_CACHE.get(key)
+                if cached is None:
+                    if key not in values:
+                        values[key] = None
+                        misses.append((flight, key))
+                else:
+                    _SIGNAL_CACHE.move_to_end(key)
+                    values[key] = cached
+
+        if misses:
+            stats = artifact.get("route_stats", {})
+            feature_rows = []
+            for flight, key in misses:
+                source, destination, _, flight_class, stops, duration, days, departure, arrival = key
+                route_key = _route_key(source, destination, flight_class)
+                base = {
+                    "source_city": source, "destination_city": destination,
+                    "airline": key[2], "flight_class": flight_class,
+                    "departure_time": departure, "arrival_time": arrival,
+                    "route_pair": f"{source}→{destination}", "stops_count": stops,
+                    "duration_hrs": duration,
+                    "route_class_mean": stats.get("mean", {}).get(route_key, artifact.get("global_mean", 0)),
+                    "route_class_median": stats.get("median", {}).get(route_key, artifact.get("global_median", 0)),
+                }
+                feature_rows.append({**base, "days_left": days})
+            feature_rows.extend(
+                {**row, "days_left": max(1, int(row["days_left"]) - 5)}
+                for row in feature_rows.copy()
             )
-            if signal.get("predicted_fair_price_inr") is not None:
-                flight["price_signal"] = {key:signal[key] for key in ("signal","predicted_fair_price_inr","confidence_pct","reason")}
+            predictions = np.maximum(0.0, artifact["model"].predict(pd.DataFrame(feature_rows)[artifact["features"]]))
+            mae = float(artifact.get("metrics", {}).get(artifact.get("selected_model"), {}).get("mae_inr", 0))
+            count = len(misses)
+            for index, (_, key) in enumerate(misses):
+                values[key] = (float(predictions[index]), float(predictions[count + index]), mae)
+            with _SIGNAL_CACHE_LOCK:
+                for key, prediction in values.items():
+                    _SIGNAL_CACHE[key] = prediction
+                    _SIGNAL_CACHE.move_to_end(key)
+                while len(_SIGNAL_CACHE) > _SIGNAL_CACHE_SIZE:
+                    _SIGNAL_CACHE.popitem(last=False)
+
+        for flight, key in normalized:
+            fair_now, fair_soon, mae = values[key]
+            price = float(flight["price"])
+            expected_change = fair_soon - fair_now
+            book_now = price <= fair_now - max(25.0, mae * .35) or expected_change > max(50.0, mae * .15)
+            signal = "BOOK_NOW" if book_now else "WAIT"
+            discount = (fair_now - price) / max(fair_now, 1.0) * 100
+            confidence = min(95.0, max(30.0, 100 * (1 - mae / max(fair_now, 1)))) if mae else 55.0
+            if book_now and discount > 1:
+                reason = f"Current fare ₹{price:,.0f} is {discount:.0f}% below predicted fair value; booking now is favorable."
+            elif book_now:
+                reason = f"Fares are forecast to rise by about ₹{expected_change:,.0f} over the next five days; booking now is favorable."
+            else:
+                reason = f"Current fare ₹{price:,.0f} is near or above predicted fair value and no sharp near-term rise is forecast."
+            flight["price_signal"] = {
+                "signal": signal, "predicted_fair_price_inr": round(fair_now, 2),
+                "confidence_pct": round(confidence, 1), "reason": reason,
+            }
     except Exception:
         # This is an advisory enhancement; never fail a flight search because of ML.
         return flights

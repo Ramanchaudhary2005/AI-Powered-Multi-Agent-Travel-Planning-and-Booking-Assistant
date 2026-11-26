@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createAgentSession, searchHotels } from '../api/client';
 import HotelResultCard from '../components/HotelResultCard';
@@ -40,6 +40,8 @@ export default function HotelResultsPage() {
   const [error, setError] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [modifyOpen, setModifyOpen] = useState(false);
+  const [resultLimit, setResultLimit] = useState(20);
+  const previousFilters = useRef(null);
 
   useEffect(() => {
     setFilters(fromParams(new URLSearchParams(queryString)));
@@ -47,6 +49,9 @@ export default function HotelResultsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const previous = previousFilters.current;
+    const debounce = previous && (filters.locality !== previous.locality || filters.max_price !== previous.max_price);
+    previousFilters.current = filters;
     setLoading(true);
     setError('');
     const timer = window.setTimeout(() => {
@@ -58,7 +63,7 @@ export default function HotelResultsPage() {
         min_rating: filters.min_rating || undefined,
         locality: filters.locality.trim() || undefined,
         sort_by: filters.sort_by,
-        limit: 30,
+        limit: resultLimit,
       };
       searchHotels(apiParams, { signal: controller.signal })
         .then((data) => setResponse({ hotels: data.hotels || [], total: Number(data.total || 0) }))
@@ -68,8 +73,12 @@ export default function HotelResultsPage() {
           setResponse({ hotels: [], total: 0 });
         })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    }, 250);
+    }, debounce ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [filters.city, filters.nights, filters.max_price, filters.star_rating, filters.min_rating, filters.locality, filters.sort_by, resultLimit]);
+
+  useEffect(() => {
+    setResultLimit(20);
   }, [filters.city, filters.nights, filters.max_price, filters.star_rating, filters.min_rating, filters.locality, filters.sort_by]);
 
   const updateFilter = useCallback((key, value) => {
@@ -159,7 +168,7 @@ export default function HotelResultsPage() {
         </aside>
 
         <section className="w-full min-w-0 flex-1 space-y-4" aria-live="polite">
-          {loading ? <SkeletonCards /> : error ? <div role="alert" className="w-full min-w-0 rounded-2xl border border-error/30 bg-error-container/20 p-6 text-sm text-error">{error}</div> : response.hotels.length ? <div className="flex w-full min-w-0 flex-col gap-4">{response.hotels.map((hotel) => <HotelResultCard key={`${hotel.hotel_id}-${filters.nights}`} hotel={hotel} onBook={(item) => navigate('/hotel-checkout', { state: { hotel: item, nights: Number(filters.nights), checkInDate: filters.check_in || undefined } })} onPlan={openAgent} />)}</div> : <div className="w-full min-w-0 rounded-2xl border border-surface-container-highest bg-surface-container-low p-9 text-center shadow-lg"><span className="material-symbols-outlined text-4xl text-on-surface-variant">hotel</span><h2 className="mt-3 font-headline text-xl font-bold text-white">No hotels match these filters</h2><p className="mx-auto mt-2 max-w-md text-sm text-on-surface-variant">Try clearing a filter or increasing your nightly budget to see more stays in {filters.city}.</p><button type="button" onClick={resetFilters} className="mt-5 rounded-xl bg-primary px-5 py-2.5 text-xs font-bold text-on-primary">Reset Filters</button></div>}
+          {loading ? <SkeletonCards /> : error ? <div role="alert" className="w-full min-w-0 rounded-2xl border border-error/30 bg-error-container/20 p-6 text-sm text-error">{error}</div> : response.hotels.length ? <><div className="flex w-full min-w-0 flex-col gap-4">{response.hotels.map((hotel) => <HotelResultCard key={`${hotel.hotel_id}-${filters.nights}`} hotel={hotel} onBook={(item) => navigate('/hotel-checkout', { state: { hotel: item, nights: Number(filters.nights), checkInDate: filters.check_in || undefined } })} onPlan={openAgent} />)}</div>{response.hotels.length < response.total && <div className="flex justify-center pt-2"><button type="button" onClick={() => setResultLimit((limit) => Math.min(limit + 20, response.total))} className="rounded-xl border border-primary/30 bg-primary/10 px-5 py-3 text-sm font-bold text-primary transition hover:bg-primary/20">Show More Hotels</button></div>}</> : <div className="w-full min-w-0 rounded-2xl border border-surface-container-highest bg-surface-container-low p-9 text-center shadow-lg"><span className="material-symbols-outlined text-4xl text-on-surface-variant">hotel</span><h2 className="mt-3 font-headline text-xl font-bold text-white">No hotels match these filters</h2><p className="mx-auto mt-2 max-w-md text-sm text-on-surface-variant">Try clearing a filter or increasing your nightly budget to see more stays in {filters.city}.</p><button type="button" onClick={resetFilters} className="mt-5 rounded-xl bg-primary px-5 py-2.5 text-xs font-bold text-on-primary">Reset Filters</button></div>}
         </section>
       </div>
     </main>

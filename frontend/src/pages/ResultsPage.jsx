@@ -74,7 +74,7 @@ export default function ResultsPage() {
   }, []);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError('');
     searchFlights({
@@ -83,9 +83,9 @@ export default function ResultsPage() {
       travel_date: travelDate,
       travel_class: travelClass,
       passengers,
-    })
+    }, { signal: controller.signal })
       .then((res) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         const list = res.flights || [];
         setRawFlights(list);
         if (list.length > 0) {
@@ -95,17 +95,15 @@ export default function ResultsPage() {
         setSelectedAirlines([]);
       })
       .catch((err) => {
-        if (!active) return;
+        if (err.name === 'AbortError' || controller.signal.aborted) return;
         setError(err.message || 'Failed to load flights.');
         setRawFlights([]);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
 
-    return () => {
-      active = false;
-    };
+    return () => controller.abort();
   }, [sourceCity, destinationCity, travelDate, travelClass, passengers]);
 
   const priceBounds = useMemo(() => {

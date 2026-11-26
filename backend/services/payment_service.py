@@ -179,6 +179,9 @@ def verify_payment(
     finally:
         conn.close()
 
+    from backend.services.flight_service import invalidate_search_cache
+    invalidate_search_cache()
+
     return _build_verify_response(payment["payment_id"])
 
 

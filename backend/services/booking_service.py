@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from backend.db import duck, sqlite as sqlite_mod
-from backend.services.flight_service import expire_stale_holds
+from backend.services.flight_service import expire_stale_holds, invalidate_search_cache
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -142,6 +142,8 @@ def create_booking(
         raise
     finally:
         conn.close()
+
+    invalidate_search_cache()
 
     return get_booking_by_pnr(pnr)  # type: ignore[return-value]
 

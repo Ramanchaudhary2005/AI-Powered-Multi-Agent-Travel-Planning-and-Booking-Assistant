@@ -1,233 +1,226 @@
-<div align="center">
+﻿<div align="center">
 
 # ✈️ FlightAgent India
 
-**AI-Powered Multi-Agent Travel Planning & Flight Booking Assistant**
+**AI-powered flight discovery, booking, and personal travel analytics for India.**
 
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-Vite-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://vitejs.dev/)
-[![Gemini AI](https://img.shields.io/badge/Google%20Gemini-2.5%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
-[![Razorpay](https://img.shields.io/badge/Razorpay-Test%20Mode-0C2451?style=for-the-badge&logo=razorpay&logoColor=white)](https://razorpay.com/)
-[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-
-*Search, rank, compare, and book Indian domestic flights either manually or conversationally through **SkyAgent**—with real-time SSE tool streaming, budget guardrails, Google OAuth profiles, and Razorpay checkout.*
+Search flights manually or chat with **SkyAgent** to find, compare, and book options. Manage a Google-authenticated travel profile, co-travellers, wishlist, bookings, and trip spending in one dark-mode web app.
 
 </div>
 
 ---
 
-## ✨ Key Features
+## Features
 
-### 🤖 SkyAgent (Conversational AI & Tool Loop)
-- **Multi-Step Tool Execution:** Powered by Google Gemini (`gemini-2.5-flash` with automatic retry and fallback), SkyAgent parses natural-language queries (e.g., *"Find cheapest non-stop Delhi to Mumbai flight next week"*) and orchestrates `search_flights`, `rank_flights`, and booking creation autonomously.
-- **Live Agent Activity Stream (SSE):** Streams real-time tool execution steps (`#1 search_flights`, `#2 rank_flights`, status badges, and raw JSON inspection) via Server-Sent Events directly to the sidebar.
-- **Weighted Score Ranking:** Automatically scores flight options and renders interactive UI cards highlighted with **Best Overall** and **Cheapest** badges, live seat availability, and one-click selection.
-- **Session Budget Cap Guardrail:** Set a strict INR budget cap per session; the backend enforces spending limits before booking creation and recommends budget-compliant alternatives.
+### Flight search and booking
 
-### 🔍 Manual Search & Checkout
-- **Domestic Flight Search:** Filter and explore Indian domestic routes with airline details, departure/arrival times, duration, stop counts, and INR pricing.
-- **Razorpay Payment Gateway:** Integrated with Razorpay Checkout (Test Mode) supporting order creation, payment verification, graceful cancellation/retry handling, PNR generation, and downloadable **PDF E-Tickets**.
+- Search the flight catalog by Indian origin and destination, travel date, cabin class, passenger count, price, stops, and departure time.
+- Review airline, flight code, schedule, duration, fare, and live seat availability.
+- Rank and compare search results, including best-value and lowest-price options.
+- Create a booking with passenger details and a short payment hold. Seat availability is checked again when the booking is created.
+- Pay through Razorpay Checkout, verify payment, and retrieve a PNR and downloadable PDF e-ticket.
+- Browse bookings by signed-in account or email, and retrieve a booking/ticket using its PNR.
 
-### 👤 Personalized Travel Account (Google OAuth 2.0)
-- **Passwordless Google Sign-In:** One-click login via Google Identity Services (`@react-oauth/google`) backed by server-side ID token verification (`google-auth`) and stateless HS256 JWT sessions (`PyJWT`).
-- **My Profile & Completion Tracker:** Manage General Information (First & Middle Name, Last Name, Gender, DOB, Nationality, Marital Status, Anniversary, City, State) and Contact Details (verified Google Email + Mobile Number).
-- **Co-Travellers Manager:** Save family, friends, or frequent co-travellers and auto-fill passenger forms in a single click during checkout.
-- **Flight Wishlist:** Bookmark flights directly from Manual Search or SkyAgent cards and jump straight into booking from `/wishlist`.
-- **My Bookings:** Centralized view of past and confirmed trips with PNR status and ticket downloads.
+### SkyAgent concierge
+
+- Chat in natural language to search, filter, rank, and book flights through a Gemini function-calling loop.
+- Stream assistant responses and tool activity to the browser using Server-Sent Events (SSE).
+- Set a session budget in the chat or budget bar. The session cap is checked before booking and payment-order actions.
+- Start or reopen agent sessions; conversation messages, tool steps, and session budget are persisted in SQLite.
+- Signed-in users get profile-aware greetings and context, including saved traveller details and wishlist routes. Guest search and booking remain available.
+
+### Google account and travel profile
+
+- Passwordless Google sign-in. The backend verifies the Google ID token and issues a stateless JWT used by authenticated API calls.
+- Edit profile and contact fields, while the verified Google email remains locked.
+- Track profile completion and manage saved co-travellers.
+- Use profile and co-traveller information to help fill passenger and contact details at checkout.
+
+### Wishlist, bookings, and trip analytics
+
+- Save flight snapshots to a personal wishlist and return to booking from a saved flight.
+- View My Bookings separately from **Trips Analysis**.
+- Analyze confirmed trips or all non-cancelled bookings, including spend, trip counts, cities, routes, airlines, cabin classes, average ticket fare, and highest/lowest fare.
+- View a spending timeline by month, or per-trip when the history is within one month.
 
 ---
 
-## 🏗️ System Architecture
+## Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                   Frontend (React + Vite)                   │
-│  Manual Search │ SkyAgent SSE Chat │ Profile & Wishlist     │
-│  Google OAuth  │ Ranked Cards UI   │ Razorpay Checkout      │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ REST API + SSE Stream (Bearer JWT)
-┌──────────────────────────────▼──────────────────────────────┐
-│                  Backend (FastAPI + Uvicorn)                │
-│                                                             │
-│  ├── Auth Router       ──► Google ID Token Verify + PyJWT   │
-│  ├── Profile/Wishlist  ──► Safe SQLite Migrations (app.db)  │
-│  ├── Agent Orchestrator──► Gemini Tool Loop (SSE + Fallback)│
-│  ├── Flight Engine     ──► Search, Filter & Weighted Ranker │
-│  └── Payments Router   ──► Razorpay SDK + PDF E-Ticket Gen  │
-└──────────────┬───────────────────────────────┬──────────────┘
-               │                               │
-     ┌─────────▼─────────┐           ┌─────────▼─────────┐
-     │  SQLite (app.db)  │           │   External APIs   │
-     │ • users           │           │ • Google Gemini   │
-     │ • bookings        │           │ • Google OAuth    │
-     │ • co_travellers   │           │ • Razorpay API    │
-     │ • wishlist        │           └───────────────────┘
-     └───────────────────┘
+```mermaid
+flowchart LR
+  Browser[React + Vite UI\nSearch · SkyAgent · Account · Trips Analysis]
+  API[FastAPI application\nREST endpoints + SSE stream]
+  Auth[Google token verification\nJWT bearer auth]
+  Agent[SkyAgent orchestrator\nGemini tool loop]
+  Services[Domain services\nFlights · Ranking · Booking · Payments · Tickets]
+  SQLite[(SQLite\nusers · sessions · bookings · payments\npassengers · messages · steps · wishlist)]
+  DuckDB[(DuckDB flight catalog\nread-only at runtime)]
+  Gemini[Google Gemini API]
+  Razorpay[Razorpay API]
+
+  Browser -->|REST + Bearer JWT| API
+  Browser -->|SSE chat| API
+  API --> Auth
+  API --> Agent
+  Agent <--> Gemini
+  API --> Services
+  Agent --> Services
+  Services --> SQLite
+  Services --> DuckDB
+  Services <--> Razorpay
 ```
 
----
+### Data and request flow
 
-## 🛠️ Tech Stack
-
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend** | React, Vite, JavaScript/JSX, Tailwind CSS, `@react-oauth/google`, `react-markdown`, EventSource/SSE |
-| **Backend** | Python 3.11+, FastAPI, Uvicorn, Pydantic |
-| **AI & Agents** | Google GenAI SDK (`google-genai`), Gemini 2.5 Flash / Flash-Lite, Server-Sent Events (SSE) |
-| **Database** | SQLite (`data/app.db`) for transactional user/booking data, DuckDB / CSV flight inventory |
-| **Auth & Security** | Google OAuth 2.0 (`google-auth`), JSON Web Tokens (`PyJWT`) |
-| **Payments** | Razorpay Python SDK & Razorpay Web Checkout (Test Mode) |
+- **Frontend:** React 18, Vite, React Router, Tailwind CSS, Recharts, React Markdown, and Google OAuth components. `AuthContext` stores the JWT and profile in local storage, hydrates the profile on reload, and provides authenticated API requests.
+- **API:** `backend/main.py` creates the FastAPI app, initializes SQLite on startup, configures CORS for local development, and registers the routers.
+- **Transactional storage:** `data/app.db` stores users, profile data, co-travellers, wishlist items, bookings, passengers, payments, and agent session history. Startup migrations add missing profile columns without dropping existing tables.
+- **Flight catalog:** `data/flights.duckdb` is queried read-only by the flight service and analytics endpoint. SQLite booking records are combined with catalog metadata for routes, airlines, and cabin class.
+- **Agent:** The SSE endpoint passes optional authenticated profile context to the orchestrator. Gemini tool calls use the same flight, ranking, booking, payment, and budget services as the rest of the application.
+- **Payments:** Razorpay order creation and signature verification update the booking/payment lifecycle. The ticket service generates PDF e-tickets for bookings.
 
 ---
 
-## 📂 Project Structure
+## Project layout
 
 ```text
-AI-Powered Multi-Agent Travel Planning and Booking Assistant/
+.
 ├── backend/
 │   ├── agent/
-│   │   ├── orchestrator.py     # Gemini tool-calling loop, SSE streaming & fallback
-│   │   └── tools.py            # search_flights, rank_flights & booking tools
+│   │   ├── budget_guard.py       # Session budget checks
+│   │   ├── orchestrator.py       # Gemini conversation and SSE stream
+│   │   └── tools.py              # Gemini tool declarations and executor
 │   ├── db/
-│   │   └── sqlite_db.py        # SQLite connection & non-destructive schema migrations
+│   │   ├── duck.py               # Read-only flight catalog connection
+│   │   └── sqlite.py             # SQLite connection and safe migrations
 │   ├── routers/
-│   │   ├── agent.py            # SSE chat & session endpoints
-│   │   ├── auth.py             # Google OAuth & JWT verification endpoints
-│   │   ├── bookings.py         # Booking lifecycle & PDF ticket routes
-│   │   ├── flights.py          # Manual search & filtering routes
-│   │   ├── payments.py         # Razorpay order creation & verification
-│   │   ├── profile.py          # User profile & co-travellers CRUD
-│   │   └── wishlist.py         # Saved flights endpoints
-│   ├── services/
-│   │   ├── auth_service.py     # Token validation & user upsert logic
-│   │   └── payment_service.py  # Razorpay client wrapper
-│   ├── config.py               # Environment variable loader
-│   └── main.py                 # FastAPI app entry point & CORS config
+│   │   ├── agent.py              # Agent sessions, budget, and chat
+│   │   ├── analytics.py          # Personal trip analytics
+│   │   ├── auth.py               # Google sign-in and JWT session
+│   │   ├── bookings.py           # Booking history and PDF ticket
+│   │   ├── flights.py            # Flight search and lookup
+│   │   ├── payments.py           # Payment order and verification
+│   │   ├── profile.py            # Profile and co-traveller APIs
+│   │   └── wishlist.py           # Saved flights
+│   ├── services/                 # Flight, ranking, booking, payment, auth, ticket logic
+│   ├── config.py                 # Environment and data paths
+│   ├── main.py                   # FastAPI application entry point
+│   └── requirements.txt
 ├── frontend/
-│   ├── src/                    # React pages, components, AuthContext & API clients
-│   ├── .env.example            # Frontend env template
+│   ├── src/
+│   │   ├── api/                  # Backend API client
+│   │   ├── components/           # Navbar and shared UI
+│   │   ├── context/              # Authentication context
+│   │   └── pages/                # Search, agent, profile, bookings, wishlist, analytics
+│   ├── .env.example
 │   └── package.json
-├── data/                       # Local SQLite DB & flight dataset (gitignored)
-├── .env.example                # Backend env template
-├── .gitignore
-└── README.md
+├── data/                         # Local database files and source flight data
+├── scripts/                      # Flight catalog loader and verification utilities
+├── .env.example
+└── readme.md
 ```
 
 ---
 
-## 🚀 Getting Started
+## Run locally
 
 ### Prerequisites
-- **Python 3.11+** (tested on Python 3.13)
-- **Node.js 18+** & **npm**
-- API keys for **Google Gemini**, **Razorpay (Test Mode)**, and a **Google OAuth 2.0 Web Client ID**
 
-### 1. Clone the Repository
-```bash
-git clone [https://github.com/](https://github.com/)<your-username>/<your-repo-name>.git
-cd "AI-Powered Multi-Agent Travel Planning and Booking Assistant"
-```
+- Python 3.11 or newer
+- Node.js 18 or newer and npm
+- A flight catalog at `data/flights.duckdb` (or the source CSV required by `scripts/load_flights.py`)
+- Google OAuth client ID for sign-in
+- Gemini API key for SkyAgent
+- Razorpay test credentials for live checkout integration
 
-### 2. Configure Environment Variables
+### 1. Configure environment
 
-Create a root `.env` file (copy from `.env.example`):
+Copy `.env.example` to `.env` and set the credentials you plan to use:
+
 ```env
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
-
-RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxxx
+RAZORPAY_KEY_ID=rzp_test_your_key_id
 RAZORPAY_KEY_SECRET=your_razorpay_test_secret
-
 GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
-JWT_SECRET=your_strong_random_jwt_secret
+JWT_SECRET=use-a-long-random-secret
 ```
 
-Create `frontend/.env` (copy from `frontend/.env.example`):
+Copy `frontend/.env.example` to `frontend/.env`:
+
 ```env
 VITE_GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
+VITE_API_BASE=http://localhost:8000
 ```
 
-> **Google Cloud Console Setup:** Under **Google Auth Platform → Clients**, create a **Web application** OAuth Client ID and add `http://localhost:5173` and `http://127.0.0.1:5173` to **Authorized JavaScript origins** (without trailing slashes). Add your email under **Audience → Test users** while in Testing mode.
+Add `http://localhost:5173` to the authorized JavaScript origins for the Google OAuth web client. The backend has a development fallback for `JWT_SECRET`; configure a strong private value outside local development.
 
-### 3. Run the Backend (FastAPI)
-```bash
-# Install dependencies
-python -m pip install -r requirements.txt
-# Or install core packages directly:
-python -m pip install fastapi uvicorn google-genai razorpay setuptools PyJWT google-auth requests python-dotenv
+### 2. Prepare the flight catalog
 
-# Start the API server on port 8000
+The backend expects `data/flights.duckdb`. If you have the source dataset at `data/airlines_flights_data.csv`, build the catalog from the repository root:
+
+```powershell
+python scripts/load_flights.py
+```
+
+### 3. Install backend dependencies and start the API
+
+From the repository root:
+
+```powershell
+python -m pip install -r backend/requirements.txt
 python -m uvicorn backend.main:app --reload --port 8000
 ```
-Interactive Swagger API docs will be available at `http://localhost:8000/docs`.
 
-### 4. Run the Frontend (React + Vite)
-```bash
+The interactive API documentation is at `http://localhost:8000/docs`.
+
+### 4. Install frontend dependencies and start Vite
+
+In another terminal:
+
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
-Open **`http://localhost:5173`** in your browser.
+
+Open `http://localhost:5173`.
 
 ---
 
-## 🔌 Core API Endpoints
+## Main API endpoints
 
-| Domain | Method & Endpoint | Description |
-| :--- | :--- | :--- |
-| **Agent** | `POST /api/agent/message` | Stream SkyAgent reasoning, tool executions, and flight cards over SSE |
-| **Auth** | `POST /api/auth/google` | Verify Google ID token, upsert user, and return JWT |
-| **Auth** | `GET /api/auth/me` | Fetch authenticated user session & profile completion percentage |
-| **Profile** | `GET / PUT /api/profile` | Read or update General Information and Contact Details |
-| **Co-Travellers** | `GET / POST / PUT / DELETE /api/profile/co-travellers` | Manage saved co-travellers for 1-click checkout fill |
-| **Wishlist** | `GET / POST / DELETE /api/wishlist` | Bookmark and retrieve saved flights |
-| **Bookings** | `GET / POST /api/bookings` | Create bookings (with budget checks) and fetch booking history |
-| **Payments** | `POST /api/payments/order` | Create a Razorpay Test Mode order for a booking |
+| Area | Endpoint | Purpose |
+| --- | --- | --- |
+| Flights | `GET /api/flights/meta` | Search filter options |
+| Flights | `POST /api/flights/search` | Search and rank flight inventory |
+| Flights | `GET /api/flights/{flight_id}` | Fetch a flight for a travel date |
+| SkyAgent | `POST /api/agent/session` | Create a chat session |
+| SkyAgent | `PATCH /api/agent/session/{session_id}/budget` | Set or clear a session budget cap |
+| SkyAgent | `POST /api/agent/message` | Send a message and receive SSE events |
+| SkyAgent | `GET /api/agent/session/{session_id}/steps` | Restore session, messages, and tool activity |
+| Auth | `POST /api/auth/google` | Verify Google credential and return a JWT |
+| Auth | `GET /api/auth/me` | Fetch current user and profile completion |
+| Auth | `POST /api/auth/logout` | Confirm stateless logout |
+| Profile | `GET /api/profile`, `PUT /api/profile` | Read or update profile and contact details |
+| Co-travellers | `/api/profile/co-travellers` | List, add, update, or delete saved travellers |
+| Wishlist | `GET /api/wishlist`, `POST /api/wishlist`, `DELETE /api/wishlist/{flight_id}` | Manage saved flight snapshots |
+| Bookings | `GET /api/bookings`, `POST /api/bookings` | List or create bookings; supports signed-in user linkage |
+| Bookings | `GET /api/bookings/{pnr}`, `GET /api/bookings/{pnr}/ticket.pdf` | Retrieve booking or PDF e-ticket |
+| Payments | `POST /api/payments/order`, `POST /api/payments/verify` | Create and verify a payment |
+| Analytics | `GET /api/analytics/my-trips?scope=confirmed` | Authenticated personal travel and spend analytics (`scope=all` includes non-cancelled bookings) |
 
----
-
-## 💳 Testing Payments Safely
-
-This project uses **Razorpay Test Mode** (`rzp_test_...`). **Never enter real card details.**
-- **UPI (Fastest):** Choose UPI in the Razorpay popup and enter `success@razorpay` to simulate an instant successful payment (or `failure@razorpay` to test failure recovery).
-- **Netbanking:** Pick any test bank and click **Success** on the Razorpay mock screen to confirm booking and download the PDF E-Ticket.
-
----
-
-## 📸 Screenshots
-
-> *Add your screenshots in `docs/screenshots/` and update the links below.*
-
-| SkyAgent Live Tool Loop & Ranked Cards | Razorpay Checkout & E-Ticket |
-| :---: | :---: |
-| ![SkyAgent UI](docs/screenshots/skyagent-chat.png) | ![Razorpay Checkout](docs/screenshots/razorpay-checkout.png) |
-
-| My Profile & Co-Travellers | Saved Flights Wishlist |
-| :---: | :---: |
-| ![Profile Page](docs/screenshots/profile.png) | ![Wishlist Page](docs/screenshots/wishlist.png) |
+Profile, co-traveller, wishlist, and analytics endpoints require a valid bearer token. Booking and agent flows support guests where available.
 
 ---
 
-## 🗺️ Roadmap
+## Payment testing
 
-- [x] Indian domestic flight search & weighted score ranking
-- [x] SkyAgent Gemini tool loop with real-time SSE activity panel
-- [x] Session budget cap guardrails
-- [x] Razorpay Test Mode checkout & PDF E-Ticket generation
-- [x] Google OAuth 2.0 Sign-In, My Profile, Co-Travellers & Wishlist
-- [ ] Personal Travel & Spending Analytics Dashboard (total spend, routes, AI vs Manual breakdown)
-- [ ] Multi-city itineraries & round-trip booking support
+Use Razorpay **Test Mode** credentials only while developing. Complete checkout using the test payment options provided by Razorpay; do not enter real payment details. A successful verification confirms the booking and makes its ticket available by PNR.
 
 ---
 
-## 👨‍💻 Author
+## License
 
-**Raman Kumar**  
-Built with FastAPI, React, Google Gemini, and Razorpay.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+See [LICENSE](LICENSE) for license details.
